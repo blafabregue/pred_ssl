@@ -7,7 +7,8 @@ augmentation factor, whether the same parameter value was applied to both views.
 The input is the SYMMETRIC combination [h1 + h2, |h1 - h2|] (dim 2*feat_dim), so the
 head is invariant to swapping the two views — correct, because "same/different" is a
 symmetric relation. The MLP is the 3-layer LayerNorm stack from the existing
-SimCLR-pred-3layers aug classifier, with the input dim doubled and 8 binary outputs.
+SimCLR-pred-3layers aug classifier, with the input dim doubled and one binary output
+per factor (9 with crop included; train.py passes len(FACTORS)).
 """
 
 import torch
@@ -16,7 +17,7 @@ import torch.nn as nn
 
 class RelHead(nn.Module):
 
-    def __init__(self, feat_dim, num_factors=8, hidden=2048):
+    def __init__(self, feat_dim, num_factors=9, hidden=2048):
         super().__init__()
         self.num_factors = num_factors
         self.mlp = nn.Sequential(

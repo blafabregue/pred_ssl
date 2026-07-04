@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from pred_ssl.scripts.check_pilot_gate import evaluate_gate, parse_log  # noqa: E402
 
-FACTORS = "rotation hflip brightness contrast saturation hue grayscale blur".split()
+FACTORS = "rotation hflip brightness contrast saturation hue grayscale blur crop".split()
 
 
 def _epoch_line(e, E, total, ssl, pred_loss, pred_acc, with_ssl=True):

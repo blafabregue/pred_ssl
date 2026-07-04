@@ -4,8 +4,8 @@ Pretraining DataLoader for pred_ssl.
 Wraps ``torchvision.datasets.ImageFolder`` with either the per-factor sharing
 transform (``RelPairTransform``) or the standard independent two-view transform
 (``StandardTwoViewTransform``), selected by ``cfg["aug_sharing"]`` /
-``cfg["rel_decoupled"]``. Each batch is ``[view1, view2, labels(N,8), mask(N,8)]`` —
-or ``[view1, view2, rel1, rel2, labels(N,8), mask(N,8)]`` in the decoupled variant
+``cfg["rel_decoupled"]``. Each batch is ``[view1, view2, labels(N,9), mask(N,9)]`` —
+or ``[view1, view2, rel1, rel2, labels(N,9), mask(N,9)]`` in the decoupled variant
 (the class index from ImageFolder is ignored by the training loop, exactly as in the
 existing main_*.py loops). The default collate handles either tuple width.
 """

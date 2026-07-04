@@ -221,11 +221,12 @@ class App:
         ui, m = self.ui, self.model
         while True:
             ui.clear()
-            ui.header("Configure · Relational head · delta (per-factor min 'different' gap)")
+            ui.header("Configure · Relational head · delta (per-factor min 'different' gap; "
+                      "crop = MAX IoU between 'different' boxes)")
             cur = m.value("delta")
             rows = [[chr(ord('a') + i), k, fmtval(cur.get(k, "?"))] for i, k in enumerate(DELTA_KEYS)]
             ui.table(["key", "factor", "value"], rows)
-            ui.note("info", "all 5 keys are required at runtime; relctl always writes the full dict")
+            ui.note("info", "all 6 keys are required at runtime; relctl always writes the full dict")
             ui.rule()
             c = ui.ask("letter to edit (b=back)").strip().lower()
             if c in ("b", "back", "", "q"):

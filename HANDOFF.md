@@ -229,7 +229,7 @@ banner always shows the current plan (`action`, `fw`, `exp`, `arch`, `epochs`,
 | Quit (jobs keep running) | `q` |
 
 In an editor: `*` marks an edited knob, `d` diffs vs defaults, `h <#>` shows help.
-Editing group **5** then the `delta` row opens a sub-form for its 5 per-factor keys.
+Editing group **5** then the `delta` row opens a sub-form for its 6 per-factor keys.
 
 **Example — a quick end-to-end smoke run from the panel:**
 1. `a` → `Pilot + gate`  (subset pretrain + automated gate)

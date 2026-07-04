@@ -1,17 +1,19 @@
 """
 Parameterized augmentation + per-factor sharing for relational/pairwise SSL.
 
-The core mechanism (the genuinely new part of pred_ssl): for each of 8 augmentation
+The core mechanism (the genuinely new part of pred_ssl): for each of 9 augmentation
 factors INDEPENDENTLY, with probability ``p_same`` apply the IDENTICAL parameter
 value to both views (label = "same" = 1); otherwise apply a GUARANTEED-different
-value (label = "different" = 0). CROP is EXCLUDED from the 8 factors and is always
-sampled independently per view (it is the contrastive signal).
+value (label = "different" = 0). CROP is one of the factors: "same" applies the
+identical crop box to both views; "different" guarantees the two boxes overlap by
+at most ``delta["crop"]`` IoU (so the difference is perceptible, mirroring the
+minimum-gap rule of the continuous factors).
 
 Factor order (the canonical label-vector index order):
     0 rotation, 1 hflip, 2 brightness, 3 contrast, 4 saturation, 5 hue,
-    6 grayscale, 7 blur
+    6 grayscale, 7 blur, 8 crop
 
-Each sample returns ``(view1, view2, labels[8], mask[8])`` where ``mask`` zeroes out
+Each sample returns ``(view1, view2, labels[9], mask[9])`` where ``mask`` zeroes out
 the saturation/hue factors whenever EITHER view is grayscale (those factors are
 unobservable on a desaturated image).
 
@@ -22,6 +24,7 @@ pixels across views (torchvision's ColorJitter randomizes sub-op order, which wo
 break that guarantee — hence we do NOT reuse it).
 """
 
+import math
 import random
 
 import numpy as np
@@ -37,7 +40,7 @@ from PIL import ImageFilter
 
 FACTORS = [
     "rotation", "hflip", "brightness", "contrast",
-    "saturation", "hue", "grayscale", "blur",
+    "saturation", "hue", "grayscale", "blur", "crop",
 ]
 IDX = {name: i for i, name in enumerate(FACTORS)}
 NUM_FACTORS = len(FACTORS)
@@ -50,12 +53,16 @@ MEAN = [0.485, 0.456, 0.406]
 STD = [0.229, 0.224, 0.225]
 
 # Minimum gap that makes a continuous "different" label perceptible / learnable.
+# For crop the gap is expressed the other way around: "different" boxes must overlap
+# by AT MOST delta["crop"] IoU (must stay >= crop_scale[0], the worst-case reachable
+# IoU when one box covers the whole image).
 DEFAULT_DELTA = {
     "brightness": 0.2,
     "contrast": 0.2,
     "saturation": 0.2,
     "hue": 0.05,
     "blur": 0.4,
+    "crop": 0.4,
 }
 
 # Per-factor "applied" probabilities for the binary factors. These control the
@@ -107,6 +114,69 @@ def _sample_blur_pair(same, rng, delta_blur, blur_mode, p_blur):
     return s1, s2
 
 
+def _box_iou(b1, b2):
+    """IoU of two (i, j, h, w) crop boxes."""
+    i1, j1, h1, w1 = b1
+    i2, j2, h2, w2 = b2
+    inter_h = max(0, min(i1 + h1, i2 + h2) - max(i1, i2))
+    inter_w = max(0, min(j1 + w1, j2 + w2) - max(j1, j2))
+    inter = inter_h * inter_w
+    union = h1 * w1 + h2 * w2 - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _sample_crop_from_size(width, height, scale, ratio, rng):
+    """RandomResizedCrop.get_params reimplemented for a bare (width, height).
+
+    Same algorithm/distribution as torchvision (10 area/aspect tries, then the
+    aspect-clamped center crop), but needing no image object so the pair can be
+    sampled alongside the other factor parameters.
+    """
+    area = width * height
+    log_lo, log_hi = math.log(ratio[0]), math.log(ratio[1])
+    for _ in range(10):
+        target_area = area * rng.uniform(scale[0], scale[1])
+        aspect = math.exp(rng.uniform(log_lo, log_hi))
+        w = int(round(math.sqrt(target_area * aspect)))
+        h = int(round(math.sqrt(target_area / aspect)))
+        if 0 < w <= width and 0 < h <= height:
+            i = rng.randint(0, height - h)
+            j = rng.randint(0, width - w)
+            return i, j, h, w
+    # Fallback: center crop clamped to the aspect-ratio bounds.
+    in_ratio = width / height
+    if in_ratio < ratio[0]:
+        w = width
+        h = int(round(w / ratio[0]))
+    elif in_ratio > ratio[1]:
+        h = height
+        w = int(round(h * ratio[1]))
+    else:
+        w, h = width, height
+    return (height - h) // 2, (width - w) // 2, h, w
+
+
+def _sample_crop_pair(same, rng, img_size, scale, ratio, max_iou, max_tries=100):
+    """Return (box1, box2). same -> identical boxes; different -> IoU <= max_iou."""
+    width, height = img_size
+    b1 = _sample_crop_from_size(width, height, scale, ratio, rng)
+    if same:
+        return b1, b1
+    for _ in range(max_tries):
+        b2 = _sample_crop_from_size(width, height, scale, ratio, rng)
+        if _box_iou(b1, b2) <= max_iou:
+            return b1, b2
+    # Fallback: a minimal-area square in the corner farthest from b1's center.
+    # Worst case (b1 == full image) its IoU is crop_scale[0], hence the constraint
+    # max_iou >= crop_scale[0] documented on DEFAULT_DELTA["crop"].
+    side = max(1, int(round(math.sqrt(scale[0] * width * height))))
+    h, w = min(side, height), min(side, width)
+    ci, cj = b1[0] + b1[2] / 2.0, b1[1] + b1[3] / 2.0
+    i = 0 if ci >= height / 2.0 else height - h
+    j = 0 if cj >= width / 2.0 else width - w
+    return b1, (i, j, h, w)
+
+
 def sample_factor_params(
     p_same=0.5,
     color_strength=1.0,
@@ -114,12 +184,19 @@ def sample_factor_params(
     blur_mode="sigma",
     p=None,
     rng=None,
+    img_size=(256, 256),
+    crop_scale=(0.2, 1.0),
+    crop_ratio=(3.0 / 4.0, 4.0 / 3.0),
 ):
     """Sample the per-factor parameters for the two views.
 
+    ``img_size`` is the (width, height) the crop boxes are sampled against — the
+    PRE-crop image size (rotation preserves the canvas, so one box is valid for
+    both views regardless of their rotation angles).
+
     Returns:
-        params_v1, params_v2: dicts keyed by factor name.
-        labels: float32[8], 1.0 == "same", 0.0 == "different" (FACTORS order).
+        params_v1, params_v2: dicts keyed by factor name (crop -> an (i, j, h, w) box).
+        labels: float32[9], 1.0 == "same", 0.0 == "different" (FACTORS order).
     """
     if rng is None:
         rng = random
@@ -180,6 +257,13 @@ def sample_factor_params(
     p1["blur"], p2["blur"] = s1, s2
     labels[IDX["blur"]] = float(same)
 
+    # --- crop (box; "different" == IoU <= delta["crop"]) ---
+    same = coin()
+    b1, b2 = _sample_crop_pair(same, rng, img_size, crop_scale, crop_ratio,
+                               delta["crop"])
+    p1["crop"], p2["crop"] = b1, b2
+    labels[IDX["crop"]] = float(same)
+
     return p1, p2, labels
 
 
@@ -212,17 +296,20 @@ def apply_pipeline(
 ):
     """Render one view deterministically from explicit per-factor params.
 
-    Order: rotation -> crop (independent) -> hflip -> brightness -> contrast ->
+    Order: rotation -> crop -> hflip -> brightness -> contrast ->
     saturation -> hue -> grayscale -> blur -> ToTensor -> Normalize.
-    If ``crop_box`` is None it is sampled here (after rotation), so each call gets
-    an independent crop; pass an explicit box to force a shared crop (tests).
+    Crop-box precedence: the explicit ``crop_box`` argument (tests) wins, then
+    ``params["crop"]`` (the shared/different pair from sample_factor_params), and
+    only if both are absent is an independent box sampled here.
     """
     # rotation (before crop, on the full image) -- matches existing RandomRotation90
     angle = params["rotation"]
     if angle != 0:
         img = img.rotate(angle)
 
-    # crop (independent contrastive signal)
+    # crop
+    if crop_box is None:
+        crop_box = params.get("crop")
     if crop_box is None:
         crop_box = sample_crop_box(img, scale=scale)
     i, j, h, w = crop_box
@@ -279,7 +366,7 @@ class GaussianBlur:
 # ---------------------------------------------------------------------------
 
 class RelPairTransform:
-    """Returns (view1, view2, labels[8], mask[8]) with per-factor sharing."""
+    """Returns (view1, view2, labels[9], mask[9]) with per-factor sharing."""
 
     def __init__(
         self,
@@ -311,6 +398,8 @@ class RelPairTransform:
             delta=self.delta,
             blur_mode=self.blur_mode,
             p=self.p,
+            img_size=img.size,
+            crop_scale=self.crop_scale,
         )
         v1 = apply_pipeline(img, p1, crop_box=None, scale=self.crop_scale,
                             out_size=self.out_size, mean=self.mean, std=self.std)

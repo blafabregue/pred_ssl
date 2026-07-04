@@ -40,12 +40,12 @@ def test_backbone_hook_and_grad():
 
 
 def test_relhead_swap_invariance():
-    head = RelHead(feat_dim=32, num_factors=8, hidden=16)
+    head = RelHead(feat_dim=32, num_factors=9, hidden=16)
     h1 = torch.randn(4, 32)
     h2 = torch.randn(4, 32)
     a = head(h1, h2)
     b = head(h2, h1)
-    assert a.shape == (4, 8)
+    assert a.shape == (4, 9)
     assert torch.allclose(a, b, atol=1e-6), "head must be invariant to view order"
 
 
@@ -69,7 +69,7 @@ def test_relpair_loss_masking():
 
 def test_simclr_forward_and_relloss_backward():
     model = build_model(_cfg())
-    head = RelHead(model.feat_dim, num_factors=8, hidden=64)
+    head = RelHead(model.feat_dim, num_factors=9, hidden=64)
     crit = RelPairLoss()
     v1 = torch.randn(4, 3, 64, 64)
     v2 = torch.randn(4, 3, 64, 64)
@@ -77,8 +77,8 @@ def test_simclr_forward_and_relloss_backward():
     assert out.h1.requires_grad and out.h2.requires_grad
     assert out.h1.shape == (4, model.feat_dim)
     assert torch.isfinite(out.ssl_loss)
-    labels = (torch.rand(4, 8) > 0.5).float()
-    mask = torch.ones(4, 8)
+    labels = (torch.rand(4, 9) > 0.5).float()
+    mask = torch.ones(4, 9)
     rel_loss, _, _ = crit(head(out.h1, out.h2), labels, mask)
     total = out.ssl_loss + 0.5 * rel_loss
     total.backward()

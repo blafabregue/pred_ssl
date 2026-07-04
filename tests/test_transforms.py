@@ -58,6 +58,7 @@ def test_same_implies_identical_params():
 # ---------------------------------------------------------------------------
 
 def test_different_is_guaranteed_different():
+    from pred_ssl.data.transforms import _box_iou
     rng = random.Random(2)
     for _ in range(20000):
         p1, p2, labels = sample_factor_params(rng=rng)
@@ -73,6 +74,12 @@ def test_different_is_guaranteed_different():
             applied_diff = (s1 > 0) != (s2 > 0)
             sigma_diff = (s1 > 0 and s2 > 0 and abs(s1 - s2) >= DEFAULT_DELTA["blur"] - 1e-9)
             assert applied_diff or sigma_diff, f"blur not guaranteed-different: {s1} vs {s2}"
+        if labels[IDX["crop"]] == 0.0:
+            iou = _box_iou(p1["crop"], p2["crop"])
+            assert iou <= DEFAULT_DELTA["crop"] + 1e-9, (
+                f"crop IoU {iou:.3f} > delta {DEFAULT_DELTA['crop']}")
+        else:
+            assert p1["crop"] == p2["crop"]
 
 
 # ---------------------------------------------------------------------------
@@ -144,15 +151,15 @@ def test_render_shapes_and_finiteness():
 
 def test_crop_is_independent():
     img = _noise_image(seed=7)
-    # p_same=1.0 forces all 8 factors identical, so the ONLY source of difference
-    # is the independent crop.
+    # p_same=1.0 forces all 9 factors identical; an EXPLICIT crop_box argument
+    # overrides params["crop"], so forcing different boxes must change the views.
     p1, p2, labels = sample_factor_params(p_same=1.0, rng=random.Random(7))
     assert labels.sum() == NUM_FACTORS  # all "same"
     box1 = (10, 10, 150, 150)
     box2 = (60, 40, 160, 170)
     v1 = apply_pipeline(img, p1, crop_box=box1)
     v2 = apply_pipeline(img, p2, crop_box=box2)
-    assert not torch.allclose(v1, v2), "independent crops should yield different views"
+    assert not torch.allclose(v1, v2), "different crop boxes should yield different views"
 
 
 # ---------------------------------------------------------------------------
@@ -168,6 +175,29 @@ def test_determinism_same_params_same_crop():
     v1 = apply_pipeline(img, p1, crop_box=box)
     v2 = apply_pipeline(img, p2, crop_box=box)
     assert torch.allclose(v1, v2, atol=1e-6), "identical params + crop must be deterministic"
+
+
+def test_shared_crop_renders_identical_views():
+    # With p_same=1.0 the crop box in params is shared too, so rendering WITHOUT an
+    # explicit crop_box must already be byte-identical across the two views.
+    img = _noise_image(seed=17)
+    p1, p2, labels = sample_factor_params(p_same=1.0, rng=random.Random(17))
+    assert p1["crop"] == p2["crop"]
+    v1 = apply_pipeline(img, p1)
+    v2 = apply_pipeline(img, p2)
+    assert torch.allclose(v1, v2, atol=1e-6), "shared crop param must yield identical views"
+
+
+def test_crop_boxes_within_image():
+    from pred_ssl.data.transforms import _box_iou  # noqa: F401 (import sanity)
+    rng = random.Random(19)
+    for w, h in [(256, 256), (300, 200), (200, 300), (64, 64)]:
+        for _ in range(2000):
+            p1, p2, _ = sample_factor_params(rng=rng, img_size=(w, h))
+            for box in (p1["crop"], p2["crop"]):
+                i, j, bh, bw = box
+                assert 0 <= i and 0 <= j and bh > 0 and bw > 0
+                assert i + bh <= h and j + bw <= w, f"box {box} exceeds image ({w}x{h})"
 
 
 # ---------------------------------------------------------------------------

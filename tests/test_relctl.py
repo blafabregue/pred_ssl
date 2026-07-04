@@ -78,7 +78,7 @@ def test_delta_overlay_keeps_all_keys():
     m = ConfigModel(REPO_ROOT)
     m.set_delta_key("hue", "0.08")
     ov = m.overlay_dict()
-    assert set(ov["delta"]) == {"brightness", "contrast", "saturation", "hue", "blur"}
+    assert set(ov["delta"]) == {"brightness", "contrast", "saturation", "hue", "blur", "crop"}
     assert ov["delta"]["hue"] == 0.08
 
 

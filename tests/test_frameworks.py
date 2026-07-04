@@ -56,12 +56,12 @@ def test_forward_h1h2_grad(fw):
 @pytest.mark.parametrize("fw", FRAMEWORKS)
 def test_relloss_grads_trainable_backbone_only(fw):
     model = build_model(_cfg(fw)).train()
-    head = RelHead(model.feat_dim, num_factors=8, hidden=64)
+    head = RelHead(model.feat_dim, num_factors=9, hidden=64)
     crit = RelPairLoss()
     v1, v2 = torch.randn(4, 3, 64, 64), torch.randn(4, 3, 64, 64)
     out = model(v1, v2)
-    labels = (torch.rand(4, 8) > 0.5).float()
-    mask = torch.ones(4, 8)
+    labels = (torch.rand(4, 9) > 0.5).float()
+    mask = torch.ones(4, 9)
     rel_loss, _, _ = crit(head(out.h1, out.h2), labels, mask)
     (out.ssl_loss + 0.5 * rel_loss).backward()
 
@@ -106,7 +106,7 @@ def test_decoupled_relpred_step(fw):
     if fw in ("moco", "looc"):
         assert getattr(model, "pair_feats") is False
 
-    head = RelHead(model.feat_dim, num_factors=8, hidden=64)
+    head = RelHead(model.feat_dim, num_factors=9, hidden=64)
     crit = RelPairLoss()
     v1, v2 = torch.randn(4, 3, 64, 64), torch.randn(4, 3, 64, 64)
     u1, u2 = torch.randn(4, 3, 64, 64), torch.randn(4, 3, 64, 64)
@@ -115,8 +115,8 @@ def test_decoupled_relpred_step(fw):
     hu1 = encode_features(model, fw, u1)
     hu2 = encode_features(model, fw, u2)
     assert hu1.shape == (4, model.feat_dim) and hu1.requires_grad
-    labels = (torch.rand(4, 8) > 0.5).float()
-    mask = torch.ones(4, 8)
+    labels = (torch.rand(4, 9) > 0.5).float()
+    mask = torch.ones(4, 9)
     rel_loss, _, _ = crit(head(hu1, hu2), labels, mask)
     (out.ssl_loss + 0.5 * rel_loss).backward()
 

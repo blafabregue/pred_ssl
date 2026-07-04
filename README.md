@@ -23,12 +23,16 @@ scripts/    run_pipeline.sh, run_pilot.sh, make_pilot_subset.py, check_pilot_gat
 tests/      pytest suite (transforms, models, frameworks, pilot gate, extract)
 ```
 
-## The 8 factors
-`rotation, hflip, brightness, contrast, saturation, hue, grayscale, blur` (crop is
-excluded — it stays independent as the contrastive signal). Per factor: with prob
-`p_same=0.5` the identical parameter is applied to both views (label "same"), else a
-guaranteed-different value (discrete: exclude view-1's value; continuous: ≥δ gap).
-Saturation/hue are masked out of the loss whenever either view is grayscale.
+## The 9 factors
+`rotation, hflip, brightness, contrast, saturation, hue, grayscale, blur, crop`.
+Per factor: with prob `p_same=0.5` the identical parameter is applied to both views
+(label "same"), else a guaranteed-different value (discrete: exclude view-1's value;
+continuous: ≥δ gap; crop: "same" = identical box, "different" = boxes with IoU ≤
+`delta.crop`). Saturation/hue are masked out of the loss whenever either view is
+grayscale. NOTE: sharing the crop means that, in the coupled `relpred` experiment,
+about half the contrastive positives see the SAME crop box, which weakens the
+crop-invariance signal — `relpred_decoupled` avoids this (the SSL pair keeps fully
+independent crops there).
 
 ## Projection head (all frameworks)
 `proj_preset=native` (default) keeps each framework's original projection head

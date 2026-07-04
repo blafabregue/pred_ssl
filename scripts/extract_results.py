@@ -17,7 +17,7 @@ import os
 import re
 
 FACTORS = ["rotation", "hflip", "brightness", "contrast",
-           "saturation", "hue", "grayscale", "blur"]
+           "saturation", "hue", "grayscale", "blur", "crop"]
 
 _EPOCH = re.compile(r"Epoch \[\d+/\d+\]\s+Loss:\s+([\d.]+)(?:\s+SSL_Loss:\s+([\d.]+))?"
                     r"\s+Pred_Loss:\s+([\d.]+)\s+Pred_Acc:\s+([\d.]+)%")

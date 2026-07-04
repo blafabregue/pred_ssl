@@ -5,8 +5,10 @@ Parses a pred_ssl pretraining log and enforces the checks that must pass before
 scaling to the full ResNet-50 / 500-epoch matrix:
 
   1. The SSL (contrastive) loss decreased over the pilot (it is learning at all).
-  2. No per-factor same/different accuracy is pinned at ~100% (a LEAK -> usually
-     crop accidentally shared, or a trivial shortcut).
+  2. No per-factor same/different accuracy is pinned at ~100% (a LEAK -> usually a
+     trivial shortcut). NOTE: since crop became a predicted factor it can legitimately
+     score high (same = identical box); if the gate flags only `crop`, inspect before
+     treating it as a leak.
   3. Enough per-factor accuracies moved OFF ~50% (the relational signal is real
      and the head is learning it).
 

@@ -30,8 +30,8 @@ EXPERIMENTS = ["baseline", "relpred", "relpred_lambda0", "relpred_decoupled", "r
 # Canonical factor order (mirror of data/transforms.py FACTORS). The head emits one
 # logit per factor; this set is owned by the data layer and is not a tunable knob.
 FACTORS = ["rotation", "hflip", "brightness", "contrast",
-           "saturation", "hue", "grayscale", "blur"]
-DELTA_KEYS = ["brightness", "contrast", "saturation", "hue", "blur"]
+           "saturation", "hue", "grayscale", "blur", "crop"]
+DELTA_KEYS = ["brightness", "contrast", "saturation", "hue", "blur", "crop"]
 
 # Editor sections, in display order.
 GROUPS = [
@@ -205,10 +205,12 @@ KNOBS = [
          doc="Decouple the head from the contrastive loss: a STANDARD independent SSL pair plus a "
              "SEPARATE per-factor shared/different pair that feeds only the head."),
     Knob("delta", "rel", "train", "dict_float", {"brightness": 0.2, "contrast": 0.2,
-                                                 "saturation": 0.2, "hue": 0.05, "blur": 0.4},
+                                                 "saturation": 0.2, "hue": 0.05, "blur": 0.4,
+                                                 "crop": 0.4},
          valid=(0.0, None),
-         note="All 5 keys required (a missing key KeyErrors at runtime).",
-         doc="Per-factor minimum 'different' gap for the continuous factors."),
+         note="All 6 keys required (a missing key KeyErrors at runtime).",
+         doc="Per-factor minimum 'different' gap for the continuous factors; for crop it is "
+             "the MAX IoU allowed between 'different' boxes (keep >= crop_scale[0])."),
 
     # ---- Eval / probe knobs ----
     Knob("eval_epochs", "eval", "eval_lincls", "int", 200, valid=(1, None), cli_flag="--epochs",
