@@ -155,6 +155,23 @@ core, plus `rich pytest` for the extras. If `pip install torch` hits a CUDA mism
 the cluster, install torch/torchvision from the official PyTorch channel for your CUDA
 build instead — https://pytorch.org/get-started/locally/ — then `pip install -r` the rest.)
 
+### Clusters with environment modules (no conda)
+
+If your cluster provides torch via `module load` rather than conda, torch/torchvision are
+already built — don't `pip install` them (and don't reuse the old system Python; torch ≥ 2
+needs Python ≥ 3.8). Put the module command(s) in **`pred_ssl/scripts/env.sh`**, which the
+SLURM job scripts source on the compute node (falling back to `conda activate` if the file
+is absent). Example (already set for the reference cluster):
+
+```bash
+# pred_ssl/scripts/env.sh
+module load python/3.12.8 pytorch/2.5.1     # -> Python 3.12 + torch 2.5.1 (CUDA 12.1)
+```
+
+Load the same module(s) in your interactive shell before the sanity checks, and install
+any missing pure-python deps once with `pip install --user pyyaml` (often absent from
+torch module venvs). Torch 2.x is required (the code uses `torch.load(weights_only=...)`).
+
 Quick check:
 
 ```bash

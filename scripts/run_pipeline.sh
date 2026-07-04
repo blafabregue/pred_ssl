@@ -34,7 +34,10 @@ export CUDA_VISIBLE_DEVICES=${GPU}
 cd "$(dirname "$0")/../.."          # repo root (parent of pred_ssl/)
 mkdir -p "$(dirname "$LOG")" "${SAVE_DIR}"
 
-if command -v conda >/dev/null 2>&1; then
+# environment: scripts/env.sh (cluster-specific: module load / conda / venv), else conda
+if [ -f pred_ssl/scripts/env.sh ]; then
+    source pred_ssl/scripts/env.sh
+elif command -v conda >/dev/null 2>&1; then
     eval "$(conda shell.bash hook)"
     conda activate "${CONDA_ENV}" || echo "WARN: could not activate ${CONDA_ENV} (continuing in current env)"
 fi

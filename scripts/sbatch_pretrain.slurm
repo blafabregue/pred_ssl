@@ -28,7 +28,10 @@ CONFIG_OVERLAY=${CONFIG_OVERLAY:-}
 
 cd "${SLURM_SUBMIT_DIR:-$(dirname "$0")/../..}"     # repo root (parent of pred_ssl/)
 mkdir -p "$(dirname "$LOG")" "${SAVE_DIR}"
-if command -v conda >/dev/null 2>&1; then
+# environment: scripts/env.sh (cluster-specific: module load / conda / venv), else conda
+if [ -f pred_ssl/scripts/env.sh ]; then
+    source pred_ssl/scripts/env.sh
+elif command -v conda >/dev/null 2>&1; then
     source "$(conda info --base)/etc/profile.d/conda.sh"
     conda activate "${CONDA_ENV:-pytorch_2_0_0}" || echo "WARN: could not activate ${CONDA_ENV}"
 fi
