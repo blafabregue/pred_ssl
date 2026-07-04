@@ -1,0 +1,7 @@
+framework: byol
+lr: 0.3
+lr_scale_by_batch: true
+lr_schedule: cosine
+proj_hidden_dim: 4096
+proj_dim: 256
+tau_base: 0.996

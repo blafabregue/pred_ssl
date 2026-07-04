@@ -1,0 +1,10 @@
+framework: moco
+lr: 0.03
+lr_scale_by_batch: false
+lr_schedule: step
+schedule: [300, 400]
+moco_dim: 128
+moco_k: 16384
+moco_m: 0.999
+moco_t: 0.2
+mlp: true

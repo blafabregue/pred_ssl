@@ -1,0 +1,6 @@
+framework: simclr
+lr: 0.3
+lr_scale_by_batch: true
+lr_schedule: cosine
+simclr_dim: 128
+temperature: 0.5

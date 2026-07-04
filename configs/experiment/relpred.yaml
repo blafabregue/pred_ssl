@@ -1,0 +1,3 @@
+# The new method: per-factor sharing loader + relational head (lambda = 0.5).
+rel_lambda: 0.5
+aug_sharing: true

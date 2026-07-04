@@ -1,0 +1,14 @@
+framework: vicreg
+# Same "large-LR, cosine, no momentum encoder" family as SimCLR/BYOL; the repo
+# approximates the paper's LARS with SGD (as it already does for SimCLR/BYOL).
+lr: 0.3
+lr_scale_by_batch: true
+lr_schedule: cosine
+# Expander (configurable size): canonical VICReg is 3 layers x 8192 (BN), output 8192.
+vicreg_expander_layers: 3
+vicreg_expander_dim: 8192
+vicreg_proj_dim: 8192
+# Loss term weights (paper defaults).
+vicreg_sim_coeff: 25.0
+vicreg_std_coeff: 25.0
+vicreg_cov_coeff: 1.0

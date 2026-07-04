@@ -1,0 +1,8 @@
+# Decoupled variant of the method: the contrastive loss sees a STANDARD independent
+# two-view pair (unchanged SSL signal), while a SEPARATE per-factor shared/different
+# pair feeds ONLY the relational head. This removes the confound in `relpred` (one
+# shared pair drives both losses, so p_same makes positives more alike and weakens
+# the contrastive signal) — at the cost of two extra backbone forwards per step.
+rel_lambda: 0.5
+aug_sharing: false             # the SSL pair is the standard independent two-view aug
+rel_decoupled: true

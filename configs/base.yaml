@@ -1,0 +1,48 @@
+# Shared defaults. Merged with configs/framework/<fw>.yaml then
+# configs/experiment/<exp>.yaml, then CLI overrides (train.py).
+
+arch: resnet50
+data: ./pred_ssl/datasets/imagenet100
+epochs: 500
+batch_size: 256
+workers: 8
+momentum: 0.9
+weight_decay: 1.0e-4
+seed: 42
+save_dir: ./checkpoints/default
+save_freq: 50
+print_freq: 20
+
+# Learning-rate control (single selector; no conflicting cos/schedule pair).
+lr: 0.3
+lr_scale_by_batch: true        # lr *= batch_size / 256
+lr_schedule: cosine            # cosine | step
+schedule: [300, 400]           # step-decay milestones (used only when lr_schedule == step)
+
+# Relational head.
+rel_lambda: 0.5                # experiment overrides: baseline -> 0.0
+rel_head_hidden: 2048
+rel_decoupled: false           # true -> SSL pair stays standard; a SEPARATE pair feeds the head
+# The head emits one logit per augmentation factor; the factor set (and its count)
+# is owned by data/transforms.py FACTORS, so there is nothing to configure here.
+
+# Augmentation.
+aug_sharing: true              # true -> RelPairTransform; false -> StandardTwoViewTransform
+crop_scale: [0.2, 1.0]
+color_strength: 1.0
+p_same: 0.5
+blur_mode: sigma               # sigma | binary
+delta: {brightness: 0.2, contrast: 0.2, saturation: 0.2, hue: 0.05, blur: 0.4}
+# used only by the standard (baseline) transform:
+use_rotation: false
+use_color: true
+
+# Projection head (all frameworks). native -> each framework's original head (default,
+# reproduces reference numbers byte-for-byte); custom -> a shared MLP sized by proj_*.
+proj_preset: native            # native | custom
+proj_layers: 2                 # number of Linear layers (custom mode)
+proj_hidden: 2048              # hidden width (custom mode)
+proj_out: 256                  # output dim (custom mode; drives MoCo/LooC queue + BYOL predictor)
+proj_bn: true                  # BatchNorm between layers (custom mode)
+
+framework: simclr              # overridden by configs/framework/<fw>.yaml

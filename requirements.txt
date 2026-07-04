@@ -1,0 +1,16 @@
+# pred_ssl — core runtime dependencies.
+#
+# These mirror the manual install in HANDOFF.md §4. On the GPU/SLURM cluster the
+# project targets the `pytorch_2_0_0` conda env; torch/torchvision must match the
+# machine's CUDA build, so prefer the official PyTorch wheels/conda channel for
+# those two rather than a blind `pip install` if you hit a CUDA mismatch:
+#   https://pytorch.org/get-started/locally/
+#
+# Install:  pip install -r pred_ssl/requirements.txt
+# (dev/UI extras — rich + pytest — live in requirements-dev.txt)
+
+torch>=2.0
+torchvision>=0.15
+numpy>=1.21
+pillow>=9.0
+pyyaml>=6.0

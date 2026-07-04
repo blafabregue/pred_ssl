@@ -1,0 +1,4 @@
+# Primary control: standard independent augmentation, no relational head.
+# Reproduces the existing per-framework spreadsheet numbers.
+rel_lambda: 0.0
+aug_sharing: false

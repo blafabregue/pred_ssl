@@ -1,0 +1,5 @@
+# Ablation: sharing loader with the head OFF (lambda = 0). Isolates the effect of
+# the per-factor sharing alone. NOT a pure-SSL control (sharing makes views more
+# alike than standard SSL) — labeled accordingly.
+rel_lambda: 0.0
+aug_sharing: true

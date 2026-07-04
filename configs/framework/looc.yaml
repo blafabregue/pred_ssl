@@ -1,0 +1,11 @@
+framework: looc
+lr: 0.03
+lr_scale_by_batch: false
+lr_schedule: step
+schedule: [300, 400]
+dim: 128
+K: 16384
+m: 0.999
+T: 0.2
+n_aug: 0              # v1: plain-MoCo behaviour; pairwise head on (q, k0)
+full_multiview: false
