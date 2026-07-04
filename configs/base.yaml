@@ -26,6 +26,13 @@ rel_decoupled: false           # true -> SSL pair stays standard; a SEPARATE pai
 # The head emits one logit per augmentation factor; the factor set (and its count)
 # is owned by data/transforms.py FACTORS, so there is nothing to configure here.
 
+# Latent split (disentanglement, experiment relpred_split). Off by default: both
+# heads see the full h. On: h is partitioned into [vanilla | common | rel]; the SSL
+# head consumes vanilla+common, the relational head consumes common+rel.
+feat_split: false
+split_ratios: [0.5, 0.25, 0.25]  # [vanilla, common, rel] fractions of feat_dim, sum = 1
+split_decov_lambda: 0.0          # >0 adds a cross-correlation penalty between the two EXCLUSIVE blocks
+
 # Augmentation.
 aug_sharing: true              # true -> RelPairTransform; false -> StandardTwoViewTransform
 crop_scale: [0.2, 1.0]

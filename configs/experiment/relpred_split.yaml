@@ -1,0 +1,7 @@
+# relpred + latent split (disentanglement): two heads, each on its own part of the
+# encoder output h = [vanilla | common | rel] (default ratios 0.5/0.25/0.25 from
+# base.yaml). The SSL head sees vanilla+common, the relational head sees common+rel.
+# Optional: set split_decov_lambda > 0 to actively decorrelate the exclusive blocks.
+rel_lambda: 0.5
+aug_sharing: true
+feat_split: true

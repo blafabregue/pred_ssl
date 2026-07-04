@@ -30,9 +30,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pred_ssl.data.loader import build_pretrain_loader  # noqa: E402
 from pred_ssl.data.transforms import FACTORS  # noqa: E402
-from pred_ssl.losses import RelPairLoss  # noqa: E402
+from pred_ssl.losses import RelPairLoss, SplitDecovLoss  # noqa: E402
 from pred_ssl.models.frameworks import backbone_state_dict, build_model, encode_features  # noqa: E402
 from pred_ssl.models.rel_head import RelHead  # noqa: E402
+from pred_ssl.models.split import build_split  # noqa: E402
 
 CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "configs")
 
@@ -123,12 +124,17 @@ def save_checkpoint(state, save_dir, filename):
 # Train
 # ---------------------------------------------------------------------------
 
-def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, cfg, epoch):
+def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, cfg, epoch,
+                    split=None, decov_criterion=None):
     use_rel = rel_head is not None and cfg["rel_lambda"] > 0
     decoupled = cfg.get("rel_decoupled", False)
+    decov_lambda = cfg.get("split_decov_lambda", 0.0)
+    use_decov = (decov_criterion is not None and split is not None and split.enabled
+                 and decov_lambda > 0 and split.n_vanilla > 0 and split.n_rel > 0)
     losses = AverageMeter()
     ssl_losses = AverageMeter()
     pred_losses = AverageMeter()
+    decov_losses = AverageMeter()
     factor_meters = [AverageMeter() for _ in FACTORS]
 
     model.train()
@@ -156,11 +162,13 @@ def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, c
                 # SEPARATE relational pair (u1,u2) through the trainable backbone.
                 u1 = u1.to(device, non_blocking=True)
                 u2 = u2.to(device, non_blocking=True)
-                hu1 = encode_features(model, cfg["framework"], u1)
-                hu2 = encode_features(model, cfg["framework"], u2)
-                rel_logits = rel_head(hu1, hu2)
+                f1 = encode_features(model, cfg["framework"], u1)
+                f2 = encode_features(model, cfg["framework"], u2)
             else:
-                rel_logits = rel_head(out.h1, out.h2)
+                f1, f2 = out.h1, out.h2
+            # With the latent split the head only sees the [common | rel] slice.
+            rel_logits = (rel_head(split.rel(f1), split.rel(f2)) if split is not None
+                          else rel_head(f1, f2))
             rel_loss, acc_pct, active = rel_criterion(rel_logits, labels, mask)
             loss = loss + cfg["rel_lambda"] * rel_loss
             pred_loss_val = rel_loss.item()
@@ -168,6 +176,12 @@ def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, c
                 a = int(active[f].item())
                 if a > 0:
                     factor_meters[f].update(acc_pct[f].item(), a)
+
+            if use_decov:
+                decov = 0.5 * (decov_criterion(split.vanilla_excl(f1), split.rel_excl(f1))
+                               + decov_criterion(split.vanilla_excl(f2), split.rel_excl(f2)))
+                loss = loss + decov_lambda * decov
+                decov_losses.update(decov.item(), v1.size(0))
 
         optimizer.zero_grad()
         loss.backward()
@@ -181,9 +195,10 @@ def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, c
         if i % cfg["print_freq"] == 0:
             dt = time.time() - end
             end = time.time()
+            decov_part = f"  Decov {decov_losses.avg:.4f}" if use_decov else ""
             print(f"  Epoch [{epoch + 1}][{i}/{len(loader)}]  "
                   f"Loss {losses.avg:.4f}  SSL {ssl_losses.avg:.4f}  "
-                  f"Pred {pred_losses.avg:.4f}  ({dt:.1f}s)", flush=True)
+                  f"Pred {pred_losses.avg:.4f}{decov_part}  ({dt:.1f}s)", flush=True)
 
     mean_acc = 0.0
     active_meters = [m for m in factor_meters if m.count > 0]
@@ -198,7 +213,7 @@ def main():
                         choices=["simclr", "moco", "byol", "looc", "vicreg"])
     parser.add_argument("--experiment", default="relpred",
                         help="config in configs/experiment/ (baseline|relpred|"
-                             "relpred_lambda0|relpred_decoupled|relpred_proj3)")
+                             "relpred_lambda0|relpred_decoupled|relpred_proj3|relpred_split)")
     # overrides
     parser.add_argument("--data", default=None)
     parser.add_argument("--arch", default=None, choices=["resnet18", "resnet50"])
@@ -255,6 +270,9 @@ def main():
     print(f"  epochs:       {cfg['epochs']}   batch_size: {cfg['batch_size']}")
     print(f"  lr:           {base_lr:.5f} (base {cfg['lr']}, scale_by_batch={cfg['lr_scale_by_batch']}, {cfg['lr_schedule']})")
     print(f"  blur_mode:    {cfg['blur_mode']}   crop_scale: {cfg['crop_scale']}")
+    if cfg.get("feat_split", False):
+        print(f"  feat_split:   ON  ratios={cfg.get('split_ratios')} "
+              f"decov_lambda={cfg.get('split_decov_lambda', 0.0)}")
     print(f"  data:         {cfg['data']}")
     print(f"  save_dir:     {cfg['save_dir']}")
     print("=" * 70, flush=True)
@@ -269,13 +287,22 @@ def main():
 
     model = build_model(cfg).to(device)
     feat_dim = getattr(model, "feat_dim", 2048)
+    # Same partition object the framework built for its SSL head (identity when off).
+    split = getattr(model, "split", None) or build_split(cfg, feat_dim)
+    if split.enabled:
+        print(f"=> latent split [vanilla|common|rel] = "
+              f"[{split.n_vanilla}|{split.n_common}|{split.n_rel}] of {feat_dim} "
+              f"(SSL head sees {split.ssl_dim}, rel head sees {split.rel_dim})")
 
     rel_head = None
     rel_criterion = None
+    decov_criterion = None
     if cfg["rel_lambda"] > 0:
-        rel_head = RelHead(feat_dim, num_factors=len(FACTORS),
+        rel_head = RelHead(split.rel_dim, num_factors=len(FACTORS),
                            hidden=cfg["rel_head_hidden"]).to(device)
         rel_criterion = RelPairLoss().to(device)
+    if cfg.get("split_decov_lambda", 0.0) > 0:
+        decov_criterion = SplitDecovLoss().to(device)
 
     params = list(model.parameters())
     if rel_head is not None:
@@ -303,7 +330,8 @@ def main():
     for epoch in range(start_epoch, cfg["epochs"]):
         lr = adjust_learning_rate(optimizer, epoch, cfg, base_lr)
         loss_avg, ssl_loss_avg, pred_loss_avg, pred_acc_avg, factor_meters = train_one_epoch(
-            loader, model, rel_head, rel_criterion, optimizer, device, cfg, epoch)
+            loader, model, rel_head, rel_criterion, optimizer, device, cfg, epoch,
+            split=split, decov_criterion=decov_criterion)
 
         print(f"Epoch [{epoch + 1}/{cfg['epochs']}]  "
               f"Loss: {loss_avg:.4f}  SSL_Loss: {ssl_loss_avg:.4f}  "

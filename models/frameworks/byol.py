@@ -18,6 +18,7 @@ import torch.nn.functional as F
 
 from ..backbones import build_backbone
 from ..projector import build_projector, is_custom, projector_out_dim
+from ..split import build_split
 from ..types import ModelOutput
 from ...losses import BYOLLoss
 
@@ -44,8 +45,10 @@ class BYOLModel(nn.Module):
 
         self.online_backbone, feat_dim = build_backbone(cfg["arch"], hook=False)
         self.feat_dim = feat_dim
+        self.split = build_split(cfg, feat_dim)   # feat_split off -> identity
+        d_in = self.split.ssl_dim
         self.online_projector = build_projector(
-            cfg, feat_dim, lambda: _build_mlp(feat_dim, proj_hidden, proj_dim))
+            cfg, d_in, lambda: _build_mlp(d_in, proj_hidden, proj_dim))
         # predictor maps the projector's OUTPUT back to itself; its hidden follows the
         # custom head width when overridden, else the native BYOL projector hidden.
         out_dim = projector_out_dim(cfg, proj_dim)
@@ -81,13 +84,13 @@ class BYOLModel(nn.Module):
 
     def forward(self, v1, v2):
         h1 = self.online_backbone(v1)                      # (N, feat_dim), fc=Identity
-        p1 = self.online_predictor(self.online_projector(h1))
+        p1 = self.online_predictor(self.online_projector(self.split.ssl(h1)))
         h2 = self.online_backbone(v2)
-        p2 = self.online_predictor(self.online_projector(h2))
+        p2 = self.online_predictor(self.online_projector(self.split.ssl(h2)))
 
         with torch.no_grad():
-            tz1 = self.target_projector(self.target_backbone(v1))
-            tz2 = self.target_projector(self.target_backbone(v2))
+            tz1 = self.target_projector(self.split.ssl(self.target_backbone(v1)))
+            tz2 = self.target_projector(self.split.ssl(self.target_backbone(v2)))
 
         p1, p2 = F.normalize(p1, dim=1), F.normalize(p2, dim=1)
         tz1, tz2 = F.normalize(tz1, dim=1), F.normalize(tz2, dim=1)

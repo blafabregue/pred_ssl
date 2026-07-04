@@ -7,10 +7,18 @@ change vs the original is the checkpoint loader (reads backbone_state_dict via
 pred_ssl.eval.common.load_backbone). Logging strings are unchanged so
 scripts/extract_results.py and the existing parsers still match.
 
+--feat-slice restricts the linear head to one block of the latent split (the
+disentanglement measurement for relpred_split checkpoints): the probe then only
+sees h[:, start:end] of the frozen feature. Slice bounds come from the ratios
+stored in the checkpoint's cfg (override with --split-ratios). The expected
+signature of disentanglement: the ROTATION probe should be strong on `rel` and
+weak on `vanilla`; the OBJECT probe the other way around.
+
     python -m pred_ssl.eval.linear_probe --data ./pred_ssl/datasets/imagenet100 \
         --pretrained ./pred_ssl/checkpoints/simclr_relpred/checkpoint_0500.pth.tar
     python -m pred_ssl.eval.linear_probe --data ./pred_ssl/datasets/imagenet100 --pretrained <ckpt> --eval-rotation
     python -m pred_ssl.eval.linear_probe --data ./pred_ssl/datasets/cub200_prepared --pretrained <ckpt>
+    python -m pred_ssl.eval.linear_probe --data <root> --pretrained <ckpt> --eval-rotation --feat-slice rel
 """
 
 import argparse
@@ -28,6 +36,21 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from pred_ssl.eval.common import (AverageMeter, accuracy, build_resnet,  # noqa: E402
                                 get_device, load_backbone, resolve_arch)
+from pred_ssl.models.split import PARTS, FeatSplit  # noqa: E402
+
+
+class SliceLinear(nn.Module):
+    """Linear classifier over one block of the frozen feature: fc(h[:, start:end])."""
+
+    def __init__(self, start, end, num_classes):
+        super().__init__()
+        self.start, self.end = start, end
+        self.fc = nn.Linear(end - start, num_classes)
+        self.fc.weight.data.normal_(mean=0.0, std=0.01)
+        self.fc.bias.data.zero_()
+
+    def forward(self, x):
+        return self.fc(x[:, self.start:self.end])
 
 
 class RotationDataset(torch.utils.data.Dataset):
@@ -102,6 +125,13 @@ def main():
     ap.add_argument("--schedule", nargs="+", type=int, default=[120, 160])
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--feat-slice", default="full", choices=list(PARTS),
+                    help="restrict the linear head to one block of the latent split "
+                         "(disentanglement measurement; default: full feature)")
+    ap.add_argument("--split-ratios", nargs=3, type=float, default=None,
+                    metavar=("VANILLA", "COMMON", "REL"),
+                    help="override the [vanilla, common, rel] ratios (default: from the "
+                         "checkpoint's cfg, else 0.5 0.25 0.25)")
     args = ap.parse_args()
 
     traindir = os.path.join(args.data, "train")
@@ -127,6 +157,21 @@ def main():
     arch = resolve_arch(ckpt, args.arch)
     model = build_resnet(arch, num_classes)
     load_backbone(model, args.pretrained)
+
+    if args.feat_slice != "full":
+        feat_dim = model.fc.in_features
+        ratios = args.split_ratios
+        if ratios is None:
+            ckpt_cfg = ckpt.get("cfg", {}) if isinstance(ckpt, dict) else {}
+            ratios = ckpt_cfg.get("split_ratios", [0.5, 0.25, 0.25])
+        split = FeatSplit(feat_dim, ratios=ratios, enabled=True)
+        start, end = split.bounds(args.feat_slice)
+        if end - start <= 0:
+            raise SystemExit(f"--feat-slice {args.feat_slice} is empty with ratios {ratios}")
+        model.fc = SliceLinear(start, end, num_classes)
+        print(f"=> probing slice '{args.feat_slice}' = h[:, {start}:{end}] "
+              f"({end - start}/{feat_dim} dims, ratios {list(ratios)})")
+
     for name, p in model.named_parameters():
         p.requires_grad = name.startswith("fc.")
     model.to(device)

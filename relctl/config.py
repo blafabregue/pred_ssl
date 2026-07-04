@@ -232,6 +232,13 @@ class ConfigModel:
         if kn.key == "crop_scale":
             if len(v) != 2 or not (0.0 <= v[0] < v[1] <= 1.0):
                 raise ValidationError("crop_scale must be two values 0 <= lo < hi <= 1.0")
+        if kn.key == "split_ratios":
+            if len(v) != 3 or any(x < 0 for x in v) or abs(sum(v) - 1.0) > 1e-6:
+                raise ValidationError("split_ratios must be 3 non-negative values "
+                                      "[vanilla, common, rel] summing to 1")
+            if v[0] + v[1] <= 0 or v[1] + v[2] <= 0:
+                raise ValidationError("split_ratios leaves a head with 0 input dims "
+                                      "(vanilla+common and common+rel must both be > 0)")
         if kn.key in ("schedule", "lincls_schedule") and v != sorted(v):
             raise ValidationError("%s milestones must be ascending" % kn.key)
         if kn.key == "n_shots" and (not v or any(x < 1 for x in v)):
@@ -263,6 +270,11 @@ class ConfigModel:
         if self.framework in ("moco", "looc") and rl > 0:
             out.append(("info", "rel_lambda>0 on %s adds a second view forward (~1.5x backbone "
                                "cost)." % self.framework))
+        if cfg.get("feat_split", False) and rl == 0:
+            out.append(("err", "feat_split=ON but rel_lambda=0 -> no relational head, so the "
+                               "rel-exclusive block gets NO gradient at all (dead dims)."))
+        if cfg.get("split_decov_lambda", 0.0) > 0 and not cfg.get("feat_split", False):
+            out.append(("info", "split_decov_lambda>0 is ignored while feat_split=OFF."))
         return out
 
     # ---------------------------------------------------------------- overlay

@@ -86,6 +86,23 @@ class VICRegLoss(nn.Module):
         return self.sim_coeff * repr_loss + self.std_coeff * std_loss + self.cov_coeff * cov_loss
 
 
+class SplitDecovLoss(nn.Module):
+    """Decorrelation penalty for the latent split (relpred_split).
+
+    Mean of the SQUARED normalized cross-correlation matrix between the two
+    EXCLUSIVE blocks of h (vanilla-only vs rel-only). Features are standardized
+    per-dimension, so the penalty is scale-invariant (entries live in [-1, 1] up to
+    sampling noise) and a split_decov_lambda of O(1) is a sensible starting point.
+    0 == the two blocks are linearly decorrelated across the batch.
+    """
+
+    def forward(self, a, b):
+        a = (a - a.mean(dim=0)) / (a.std(dim=0) + 1e-6)
+        b = (b - b.mean(dim=0)) / (b.std(dim=0) + 1e-6)
+        c = (a.T @ b) / a.size(0)                                                # (Da, Db)
+        return (c ** 2).mean()
+
+
 class RelPairLoss(nn.Module):
     """Per-factor BCE for the relational head.
 

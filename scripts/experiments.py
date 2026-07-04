@@ -14,10 +14,12 @@ box, and you can narrow it without editing code):
     ARCH         resnet18 | resnet50 (default: resnet50)
     EPOCHS       pretraining epochs (default: 500)
 
-The three variants (per the study design):
+The three default variants (per the study design):
     baseline       vanilla SSL, no relational head            (experiment: baseline)
     relpred        vanilla + the new relational loss          (experiment: relpred)
     relpred_proj3  relpred + the new 3-layer projection head  (experiment: relpred_proj3)
+Opt-in (add via VARIANTS="... relpred_split"):
+    relpred_split  relpred + latent split [vanilla|common|rel] (experiment: relpred_split)
 
 Usage:
     python -m pred_ssl.scripts.experiments               # human table
@@ -31,7 +33,12 @@ VARIANTS = {
     "baseline":      ("baseline",      "vanilla SSL, no relational head"),
     "relpred":       ("relpred",       "vanilla + relational loss"),
     "relpred_proj3": ("relpred_proj3", "relpred + custom 3-layer projection head"),
+    "relpred_split": ("relpred_split", "relpred + latent split [vanilla|common|rel]"),
 }
+
+# Default matrix (opt-in variants like relpred_split are NOT included by default;
+# add them via VARIANTS="... relpred_split").
+DEFAULT_VARIANTS = ["baseline", "relpred", "relpred_proj3"]
 
 DEFAULT_FRAMEWORKS = ["simclr", "moco", "byol", "looc", "vicreg"]
 DEFAULT_SEEDS = ["1", "2", "3"]
@@ -45,7 +52,7 @@ def _env_list(name, default):
 def matrix():
     """Return the ordered list of experiment dicts from the (env-overridable) matrix."""
     frameworks = _env_list("FRAMEWORKS", DEFAULT_FRAMEWORKS)
-    variants = _env_list("VARIANTS", list(VARIANTS))
+    variants = _env_list("VARIANTS", DEFAULT_VARIANTS)
     seeds = _env_list("SEEDS", DEFAULT_SEEDS)
     arch = os.environ.get("ARCH", "resnet50")
     epochs = int(os.environ.get("EPOCHS", "500"))

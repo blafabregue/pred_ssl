@@ -13,6 +13,7 @@ import torch.nn.functional as F
 
 from ..backbones import build_backbone
 from ..projector import build_projector
+from ..split import build_split
 from ..types import ModelOutput
 from ...losses import NTXentLoss
 
@@ -38,18 +39,20 @@ class SimCLRModel(nn.Module):
         super().__init__()
         self.backbone, feat_dim = build_backbone(cfg["arch"])
         self.feat_dim = feat_dim
+        self.split = build_split(cfg, feat_dim)   # feat_split off -> identity
         dim = cfg.get("simclr_dim", 128)
-        self.projector = build_projector(cfg, feat_dim, lambda: nn.Sequential(
-            nn.Linear(feat_dim, feat_dim),
+        d_in = self.split.ssl_dim
+        self.projector = build_projector(cfg, d_in, lambda: nn.Sequential(
+            nn.Linear(d_in, d_in),
             nn.ReLU(),
-            nn.Linear(feat_dim, dim),
+            nn.Linear(d_in, dim),
         ))
         self.criterion = NTXentLoss(temperature=cfg.get("temperature", 0.5))
 
     def _encode(self, x):
         self.backbone(x)                 # triggers the avgpool hook
         h = self.backbone._feat          # (N, feat_dim), requires grad
-        z = F.normalize(self.projector(h), dim=1)
+        z = F.normalize(self.projector(self.split.ssl(h)), dim=1)
         return h, z
 
     def forward(self, v1, v2):

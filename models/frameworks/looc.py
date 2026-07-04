@@ -17,6 +17,7 @@ import torch.nn.functional as F
 
 from ..backbones import build_backbone
 from ..projector import build_projector, projector_out_dim
+from ..split import build_split
 from ..types import ModelOutput
 
 
@@ -43,8 +44,10 @@ class LooCModel(nn.Module):
         self.backbone_q, feat_dim = build_backbone(cfg["arch"], hook=True)
         self.backbone_k, _ = build_backbone(cfg["arch"], hook=False)
         self.feat_dim = feat_dim
-        self.head_q = build_projector(cfg, feat_dim, lambda: _head(feat_dim, native_dim))
-        self.head_k = build_projector(cfg, feat_dim, lambda: _head(feat_dim, native_dim))
+        self.split = build_split(cfg, feat_dim)   # feat_split off -> identity
+        d_in = self.split.ssl_dim
+        self.head_q = build_projector(cfg, d_in, lambda: _head(d_in, native_dim))
+        self.head_k = build_projector(cfg, d_in, lambda: _head(d_in, native_dim))
 
         for q, k in zip(self.backbone_q.parameters(), self.backbone_k.parameters()):
             k.data.copy_(q.data)
@@ -81,15 +84,15 @@ class LooCModel(nn.Module):
         if self.pair_feats:
             feat = self.backbone_q(torch.cat([v1, v2], dim=0))   # (2N, feat_dim)
             h1, h2 = feat[:N], feat[N:]
-            q = F.normalize(self.head_q(feat[:N]), dim=1)
+            q = F.normalize(self.head_q(self.split.ssl(h1)), dim=1)
         else:
             h1 = self.backbone_q(v1)
             h2 = None
-            q = F.normalize(self.head_q(h1), dim=1)
+            q = F.normalize(self.head_q(self.split.ssl(h1)), dim=1)
 
         with torch.no_grad():
             self._momentum_update()
-            k = F.normalize(self.head_k(self.backbone_k(v2)), dim=1)
+            k = F.normalize(self.head_k(self.split.ssl(self.backbone_k(v2))), dim=1)
 
         l_pos = (q * k).sum(dim=1, keepdim=True)
         l_neg = q @ self.queue.clone().detach()

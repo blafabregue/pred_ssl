@@ -25,7 +25,8 @@ from typing import Optional
 
 
 FRAMEWORKS = ["simclr", "moco", "byol", "looc", "vicreg"]
-EXPERIMENTS = ["baseline", "relpred", "relpred_lambda0", "relpred_decoupled", "relpred_proj3"]
+EXPERIMENTS = ["baseline", "relpred", "relpred_lambda0", "relpred_decoupled", "relpred_proj3",
+               "relpred_split"]
 
 # Canonical factor order (mirror of data/transforms.py FACTORS). The head emits one
 # logit per factor; this set is owned by the data layer and is not a tunable knob.
@@ -204,6 +205,17 @@ KNOBS = [
          coupling="set by experiment relpred_decoupled; needs rel_lambda>0; +2 backbone forwards/step",
          doc="Decouple the head from the contrastive loss: a STANDARD independent SSL pair plus a "
              "SEPARATE per-factor shared/different pair that feeds only the head."),
+    Knob("feat_split", "rel", "train", "bool", False,
+         coupling="set by experiment relpred_split; only meaningful with rel_lambda>0",
+         doc="Partition h into [vanilla|common|rel] blocks: the SSL head sees vanilla+common, "
+             "the relational head sees common+rel (gradient-level disentanglement)."),
+    Knob("split_ratios", "rel", "train", "list_float", [0.5, 0.25, 0.25], valid=(0.0, 1.0),
+         coupling="used only when feat_split=ON",
+         doc="[vanilla, common, rel] fractions of feat_dim; 3 non-negative values summing to 1."),
+    Knob("split_decov_lambda", "rel", "train", "float", 0.0, valid=(0.0, None),
+         coupling="used only when feat_split=ON and rel_lambda>0",
+         doc="Weight of the cross-correlation penalty between the vanilla- and rel-EXCLUSIVE "
+             "blocks (0 = off; O(1) is a sensible starting point)."),
     Knob("delta", "rel", "train", "dict_float", {"brightness": 0.2, "contrast": 0.2,
                                                  "saturation": 0.2, "hue": 0.05, "blur": 0.4,
                                                  "crop": 0.4},

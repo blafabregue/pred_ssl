@@ -17,6 +17,7 @@ import torch.nn.functional as F
 
 from ..backbones import build_backbone
 from ..projector import build_projector, projector_out_dim
+from ..split import build_split
 from ..types import ModelOutput
 
 
@@ -40,8 +41,10 @@ class MoCoModel(nn.Module):
         self.encoder_q, feat_dim = build_backbone(cfg["arch"], hook=True)
         self.encoder_k, _ = build_backbone(cfg["arch"], hook=False)
         self.feat_dim = feat_dim
-        self.projector_q = build_projector(cfg, feat_dim, lambda: _moco_v2_head(feat_dim, native_dim))
-        self.projector_k = build_projector(cfg, feat_dim, lambda: _moco_v2_head(feat_dim, native_dim))
+        self.split = build_split(cfg, feat_dim)   # feat_split off -> identity
+        d_in = self.split.ssl_dim
+        self.projector_q = build_projector(cfg, d_in, lambda: _moco_v2_head(d_in, native_dim))
+        self.projector_k = build_projector(cfg, d_in, lambda: _moco_v2_head(d_in, native_dim))
 
         for q, k in zip(self.encoder_q.parameters(), self.encoder_k.parameters()):
             k.data.copy_(q.data)
@@ -78,15 +81,15 @@ class MoCoModel(nn.Module):
         if self.pair_feats:
             feat = self.encoder_q(torch.cat([v1, v2], dim=0))  # (2N, feat_dim), fc=Identity
             h1, h2 = feat[:N], feat[N:]
-            q = F.normalize(self.projector_q(feat[:N]), dim=1)
+            q = F.normalize(self.projector_q(self.split.ssl(h1)), dim=1)
         else:
             h1 = self.encoder_q(v1)                              # (N, feat_dim)
             h2 = None
-            q = F.normalize(self.projector_q(h1), dim=1)
+            q = F.normalize(self.projector_q(self.split.ssl(h1)), dim=1)
 
         with torch.no_grad():
             self._momentum_update()
-            k = F.normalize(self.projector_k(self.encoder_k(v2)), dim=1)
+            k = F.normalize(self.projector_k(self.split.ssl(self.encoder_k(v2))), dim=1)
 
         l_pos = (q * k).sum(dim=1, keepdim=True)                 # (N, 1)
         l_neg = q @ self.queue.clone().detach()                  # (N, K)

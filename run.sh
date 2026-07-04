@@ -22,7 +22,7 @@ set -uo pipefail
 # ============================== CONFIG (edit me) =============================
 MODE="${MODE:-pilot}"                         # test | pilot | pipeline | matrix
 FRAMEWORKS="${FRAMEWORKS:-simclr}"            # any of: simclr moco byol looc vicreg
-EXPERIMENTS="${EXPERIMENTS:-relpred}"         # any of: baseline relpred relpred_lambda0 relpred_decoupled
+EXPERIMENTS="${EXPERIMENTS:-relpred}"         # any of: baseline relpred relpred_lambda0 relpred_decoupled relpred_proj3 relpred_split
 ARCH="${ARCH:-resnet18}"                      # resnet18 | resnet50
 EPOCHS="${EPOCHS:-50}"                         # pretraining epochs
 EVAL_EPOCHS="${EVAL_EPOCHS:-200}"             # linear-probe epochs (pipeline mode)

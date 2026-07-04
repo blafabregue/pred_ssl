@@ -16,6 +16,7 @@ import torch.nn as nn
 
 from ..backbones import build_backbone
 from ..projector import build_projector
+from ..split import build_split
 from ..types import ModelOutput
 from ...losses import VICRegLoss
 
@@ -43,10 +44,12 @@ class VICRegModel(nn.Module):
         super().__init__()
         self.backbone, feat_dim = build_backbone(cfg["arch"])
         self.feat_dim = feat_dim
+        self.split = build_split(cfg, feat_dim)   # feat_split off -> identity
+        d_in = self.split.ssl_dim
         # native: the configurable VICReg expander (vicreg_* knobs).
         # custom (proj_preset='custom'): the shared proj_* MLP, like every other framework.
-        self.expander = build_projector(cfg, feat_dim, lambda: _build_expander(
-            feat_dim,
+        self.expander = build_projector(cfg, d_in, lambda: _build_expander(
+            d_in,
             cfg.get("vicreg_expander_dim", 8192),
             cfg.get("vicreg_proj_dim", 8192),
             cfg.get("vicreg_expander_layers", 3),
@@ -59,7 +62,7 @@ class VICRegModel(nn.Module):
 
     def _encode(self, x):
         h = self.backbone(x)             # (N, feat_dim), fc=Identity -> pooled feature
-        z = self.expander(h)             # (N, proj_dim), NOT normalized (VICReg)
+        z = self.expander(self.split.ssl(h))  # (N, proj_dim), NOT normalized (VICReg)
         return h, z
 
     def forward(self, v1, v2):
