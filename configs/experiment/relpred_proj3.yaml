@@ -1,0 +1,8 @@
+# The method WITH the new custom 3-layer projection head: relpred (per-factor sharing
+# loader + relational head, lambda = 0.5) plus proj_preset=custom / proj_layers=3, which
+# replaces every framework's native projector with a shared 3-layer MLP.
+# proj_hidden / proj_out / proj_bn inherit base.yaml (2048 / 256 / true).
+rel_lambda: 0.5
+aug_sharing: true
+proj_preset: custom
+proj_layers: 3

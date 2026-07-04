@@ -272,6 +272,66 @@ Useful env-var overrides for any script: `GPU`, `CONDA_ENV`, `ARCH`, `EPOCHS`,
 - `relpred_decoupled` — the method without the augmentation confound: standard independent
   contrastive pair + a separate shared/different pair feeding only the head
   (`rel_decoupled=true`; +2 backbone forwards/step).
+- `relpred_proj3` — `relpred` **plus the new custom 3-layer projection head**
+  (`proj_preset=custom`, `proj_layers=3`).
+
+---
+
+## 7b. Resumable multi-seed SLURM matrix (24h wall-clock clusters)
+
+The recommended way to run the study on a cluster that caps jobs at 24h. It launches
+**one SLURM job per experiment**, runs **each method over several seeds** (statistical
+noise), and every pretraining job **auto-resumes from its last checkpoint** — so a job
+killed at the time limit just continues on the next submit. A status report tells you
+what is left.
+
+**The experiment matrix** (`scripts/experiments.py`) is `frameworks × variants × seeds`:
+
+| axis | default | override |
+|---|---|---|
+| frameworks | `simclr moco byol looc vicreg` | `FRAMEWORKS="simclr moco"` |
+| variants | `baseline relpred relpred_proj3` | `VARIANTS="baseline relpred"` |
+| seeds | `1 2 3` | `SEEDS="1 2 3 4 5"` |
+| arch / epochs | `resnet50` / `500` | `ARCH=resnet18 EPOCHS=300` |
+
+The three variants are exactly: **vanilla** (`baseline`), **vanilla + the new loss**
+(`relpred`), and **vanilla + new loss + the new 3-layer projection head**
+(`relpred_proj3`). Default = 5 × 3 × 3 = **45 pretraining runs** (+ their evals).
+
+```bash
+# 0) one-time: fill the <PARTITION>/<ACCOUNT> placeholders in
+#    pred_ssl/scripts/sbatch_pretrain.slurm  and  sbatch_eval.slurm
+
+# 1) see the matrix (nothing is submitted)
+python -m pred_ssl.scripts.experiments
+
+# 2) submit every UNFINISHED experiment (pretrain jobs auto-resume; evals run once
+#    a pretrain's final checkpoint exists). Safe to re-run — it skips done/queued ones.
+bash pred_ssl/scripts/slurm_submit.sh
+
+# 3) after the 24h batch expires, see what's left…
+python -m pred_ssl.scripts.slurm_status
+#    …and resubmit the unfinished ones (continues from the last checkpoint):
+bash pred_ssl/scripts/slurm_submit.sh
+#    repeat 2–3 until slurm_status shows everything DONE.
+
+# 4) collect the numbers
+python -m pred_ssl.scripts.extract_results --logs-dir ./pred_ssl/logs --out ./pred_ssl/results.csv
+```
+
+Narrow the matrix by exporting the same env vars for BOTH commands, e.g.
+`FRAMEWORKS="simclr" VARIANTS="relpred relpred_proj3" SEEDS="1 2" bash pred_ssl/scripts/slurm_submit.sh`.
+
+**How resume works.** Pretraining runs with `--save-latest --save-freq 25`: intermediate
+progress is written to a single rolling `checkpoint_last.pth.tar` (so ≤ 25 epochs are lost
+on a kill and disk stays small), and the final `checkpoint_<epochs>.pth.tar` is written on
+completion for the evals. `sbatch_pretrain.slurm` finds that checkpoint and passes
+`--resume` automatically; the pretrain log is appended (never truncated) across resubmits.
+Each experiment has its own `checkpoints/<tag>/` and `logs/<tag>.log`, with
+`tag = <framework>_<variant>_<arch>_s<seed>`.
+
+Launch a **single** experiment directly if you prefer:
+`FRAMEWORKS=simclr VARIANTS=baseline SEEDS=1 bash pred_ssl/scripts/slurm_submit.sh`.
 
 ---
 

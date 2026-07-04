@@ -45,6 +45,11 @@ predictor). VICReg's `native` head is its own configurable expander (`vicreg_*`)
 - `relpred_decoupled` — the method WITHOUT the augmentation confound: the contrastive
   loss sees a standard independent pair, and a separate per-factor shared/different
   pair feeds only the head (`rel_decoupled=true`). Costs 2 extra backbone forwards/step.
+- `relpred_proj3` — `relpred` plus the new custom 3-layer projection head
+  (`proj_preset=custom`, `proj_layers=3`).
+
+For running the full study on a 24h-limited SLURM cluster (one job per experiment,
+multiple seeds, auto-resume + a status report), see **HANDOFF.md §7b**.
 
 ## Interactive control panel — `relctl` (recommended)
 

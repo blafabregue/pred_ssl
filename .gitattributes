@@ -1,0 +1,6 @@
+# Force LF line endings in the repo and on checkout everywhere, so shell/SLURM
+# scripts run correctly on the Linux cluster regardless of the committer's OS.
+* text=auto eol=lf
+*.sh   text eol=lf
+*.slurm text eol=lf
+*.py   text eol=lf

@@ -197,8 +197,8 @@ def main():
     parser.add_argument("--framework", required=True,
                         choices=["simclr", "moco", "byol", "looc", "vicreg"])
     parser.add_argument("--experiment", default="relpred",
-                        help="config in configs/experiment/ "
-                             "(baseline|relpred|relpred_lambda0|relpred_decoupled)")
+                        help="config in configs/experiment/ (baseline|relpred|"
+                             "relpred_lambda0|relpred_decoupled|relpred_proj3)")
     # overrides
     parser.add_argument("--data", default=None)
     parser.add_argument("--arch", default=None, choices=["resnet18", "resnet50"])
@@ -208,6 +208,11 @@ def main():
     parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--save-dir", default=None)
     parser.add_argument("--save-freq", type=int, default=None)
+    parser.add_argument("--save-latest", action="store_true",
+                        help="write intermediate checkpoints to a single overwritten "
+                             "checkpoint_last.pth.tar (disk-efficient, resume-friendly for "
+                             "time-limited SLURM jobs) instead of per-epoch milestones; the "
+                             "final checkpoint_<epochs>.pth.tar is still written for eval")
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--print-freq", type=int, default=None)
     parser.add_argument("--rel-lambda", type=float, default=None)
@@ -309,8 +314,9 @@ def main():
                              for i in range(len(FACTORS)) if factor_meters[i].count > 0)
             print(f"  PerFactor: {parts}", flush=True)
 
-        if (epoch + 1) % cfg["save_freq"] == 0 or (epoch + 1) == cfg["epochs"]:
-            save_checkpoint({
+        is_final = (epoch + 1) == cfg["epochs"]
+        if (epoch + 1) % cfg["save_freq"] == 0 or is_final:
+            state = {
                 "epoch": epoch + 1,
                 "arch": cfg["arch"],
                 "framework": cfg["framework"],
@@ -321,7 +327,14 @@ def main():
                 "backbone_state_dict": backbone_state_dict(model, cfg["framework"]),
                 "optimizer": optimizer.state_dict(),
                 "cfg": cfg,
-            }, cfg["save_dir"], f"checkpoint_{epoch + 1:04d}.pth.tar")
+            }
+            # --save-latest: intermediate saves overwrite one checkpoint_last.pth.tar
+            # (so a time-limited job resumes from there); the final epoch always writes
+            # the canonical checkpoint_<epochs>.pth.tar that the eval scripts load.
+            if args.save_latest and not is_final:
+                save_checkpoint(state, cfg["save_dir"], "checkpoint_last.pth.tar")
+            else:
+                save_checkpoint(state, cfg["save_dir"], f"checkpoint_{epoch + 1:04d}.pth.tar")
 
     print("\n=> Training complete!")
     print(f"   Checkpoints in: {cfg['save_dir']}")

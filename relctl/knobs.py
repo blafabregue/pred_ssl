@@ -25,7 +25,7 @@ from typing import Optional
 
 
 FRAMEWORKS = ["simclr", "moco", "byol", "looc", "vicreg"]
-EXPERIMENTS = ["baseline", "relpred", "relpred_lambda0", "relpred_decoupled"]
+EXPERIMENTS = ["baseline", "relpred", "relpred_lambda0", "relpred_decoupled", "relpred_proj3"]
 
 # Canonical factor order (mirror of data/transforms.py FACTORS). The head emits one
 # logit per factor; this set is owned by the data layer and is not a tunable knob.
