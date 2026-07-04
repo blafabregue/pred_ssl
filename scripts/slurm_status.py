@@ -15,9 +15,9 @@ resuming pretraining from the last checkpoint.
     FRAMEWORKS="simclr moco" SEEDS="1 2" python -m pred_ssl.scripts.slurm_status
 """
 
+import getpass
 import os
 import re
-import shutil
 import subprocess
 
 from pred_ssl.scripts.experiments import matrix
@@ -46,20 +46,37 @@ def _eval_done(eval_log):
 
 
 def _queued_jobs():
-    """Set of SLURM job names for the current user (empty if squeue is unavailable)."""
-    if not shutil.which("squeue"):
-        return None
-    try:
-        out = subprocess.run(["squeue", "--me", "--noheader", "--format=%j"],
-                             capture_output=True, text=True, timeout=30)
-        return {j.strip() for j in out.stdout.splitlines() if j.strip()}
-    except Exception:  # noqa: BLE001
-        return None
+    """(set of SLURM job names for the current user, None) — or (None, reason).
+
+    Runs squeue directly (no shutil.which pre-check: on some clusters `squeue` in the
+    interactive shell is a site-provided FUNCTION/alias wrapping a binary that is not
+    itself on PATH — `which` then fails even though typing `squeue` works). Falls back
+    to `-u $USER` for SLURM < 20.02 (no --me). Override the binary with SQUEUE=/path
+    (see `type squeue` to find what your shell actually calls).
+    """
+    squeue = os.environ.get("SQUEUE", "squeue")
+    fmt = ["--noheader", "--format=%j"]
+    reason = f"'{squeue}' not found"
+    for sel in (["--me"], ["-u", getpass.getuser()]):
+        try:
+            out = subprocess.run([squeue] + sel + fmt,
+                                 capture_output=True, text=True, timeout=30)
+        except FileNotFoundError:
+            return None, (f"'{squeue}' is not an executable on PATH — if `type squeue` "
+                          "says it is a shell function/alias, point SQUEUE=<real binary>")
+        except Exception as e:  # noqa: BLE001
+            return None, f"{squeue} {' '.join(sel)} failed: {e}"
+        if out.returncode == 0:
+            return {j.strip() for j in out.stdout.splitlines() if j.strip()}, None
+        err = out.stderr.strip().splitlines()
+        reason = f"{squeue} {' '.join(sel)}: " + (err[0] if err
+                                                  else f"exit {out.returncode}")
+    return None, reason
 
 
 def main():
     exps = matrix()
-    queued = _queued_jobs()
+    queued, squeue_reason = _queued_jobs()
 
     rows = []
     n_done = n_partial = n_running = n_todo = n_eval_todo = 0
@@ -98,7 +115,7 @@ def main():
     print(f"total {len(exps)} | done {n_done} | eval-to-run {n_eval_todo} | "
           f"running {n_running} | partial {n_partial} | not-started {n_todo}")
     if queued is None:
-        print("(squeue not available -> 'running' not detected; run on the cluster for live state)")
+        print(f"('running' not detected — {squeue_reason}; states above rely on disk only)")
     remaining = n_eval_todo + n_running + n_partial + n_todo
     if remaining:
         print(f"\n{remaining} experiment(s) not finished. Resubmit the unfinished ones with:")
