@@ -5,18 +5,22 @@
 #
 # Usage:
 #   GPU=0 bash pred_ssl/scripts/run_pilot.sh
-#   GPU=0 EPOCHS=5 FRAMEWORK=simclr bash pred_ssl/scripts/run_pilot.sh
+#   GPU=0 EPOCHS=20 FRAMEWORK=simclr bash pred_ssl/scripts/run_pilot.sh
+#
+# Defaults match run.sh and the relctl pilot knobs (50 epochs, 20 classes x 500).
+# Anything much shorter leaves the relational head at chance (~50%) and fails the
+# gate's ">= 3 factors learning" check for lack of gradient steps, not for a bug.
 set -e
 
 # --- config (override via env) ---
 GPU=${GPU:-0}
 FRAMEWORK=${FRAMEWORK:-simclr}
-EPOCHS=${EPOCHS:-5}
+EPOCHS=${EPOCHS:-50}
 ARCH=${ARCH:-resnet18}
 SRC=${SRC:-./pred_ssl/datasets/imagenet100} # full IN-100 dataset root
 SUBSET=${SUBSET:-./pred_ssl/pilot_in100}    # symlinked pilot subset
-N_CLASSES=${N_CLASSES:-10}
-N_PER_CLASS=${N_PER_CLASS:-200}
+N_CLASSES=${N_CLASSES:-20}
+N_PER_CLASS=${N_PER_CLASS:-500}
 SAVE_DIR=${SAVE_DIR:-./pred_ssl/checkpoints/pilot_${FRAMEWORK}}
 LOG=${LOG:-./pred_ssl/logs/pilot_${FRAMEWORK}.log}
 CONDA_ENV=${CONDA_ENV:-pytorch_2_0_0}
