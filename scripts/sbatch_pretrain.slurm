@@ -7,13 +7,12 @@
 #SBATCH --time=24:00:00                  # cluster wall-clock cap (resume across jobs)
 #SBATCH --output=pred_ssl/logs/%x_%j.out
 #SBATCH --error=pred_ssl/logs/%x_%j.err
-#SBATCH --constraint="gpuh100|gpua100|gpuh200|gpua40|gpul40s|gpuv100"
+#SBATCH --constraint="gpuh100|gpua100|gpuh200|gpua40|gpul40s"
 #
 # Pretrain ONE experiment (framework/experiment/seed), AUTO-RESUMING from its last
 # checkpoint. Built for a wall-clock-limited cluster: if the job is killed at the time
 # limit, just resubmit the SAME command — it continues where training stopped. Normally
 # submitted by scripts/slurm_submit.sh; the checkpoint bookkeeping lives here.
-source /home2020/home/icube/blafabre/pred_ssl/venv/bin/activate
 set -e
 
 FRAMEWORK=${FRAMEWORK:-simclr}

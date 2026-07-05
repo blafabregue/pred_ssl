@@ -7,10 +7,5 @@
 # Configured for hpc-login1: modules provide Python 3.12 + torch 2.5.1 (CUDA 12.1).
 
 # make `module` available in a non-interactive (batch) shell if it isn't already
-if ! command -v module >/dev/null 2>&1; then
-    for f in /etc/profile.d/modules.sh /usr/share/lmod/lmod/init/bash /etc/profile.d/lmod.sh; do
-        [ -f "$f" ] && . "$f" && break
-    done
-fi
-
-module load python/3.12.8 pytorch/2.5.1
+module load python/3.12.8
+source /home2020/home/icube/blafabre/pred_ssl/venv/bin/activate
