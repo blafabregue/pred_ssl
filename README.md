@@ -141,6 +141,21 @@ All datasets live under `pred_ssl/datasets/` (run commands from the folder conta
 Override any of them in relctl's **Runtime** group, or via the `IN100`/`CUB`/`FLOWERS`
 env vars for the scripts.
 
+## Pretraining monitor, best/last checkpoints & curves
+- **kNN val monitor** (default ON, `knn_eval_freq: 5`): every N pretraining epochs the
+  frozen features are scored with a weighted kNN on the val split and logged as
+  `KNN_Acc: x%` — the "validation accuracy per epoch" curve SSL otherwise lacks.
+- **Checkpoints**: `checkpoint_last.pth.tar` is written every `save_freq` epochs
+  (default 10; rolling — what SLURM resumes from), `checkpoint_best.pth.tar` whenever
+  the monitored metric improves (kNN acc, or lowest train loss when the monitor is
+  off), plus the usual milestones / final `checkpoint_<epochs>.pth.tar` for the evals.
+  Writes happen on a background thread (`async_checkpoint: true`) from a decoupled CPU
+  snapshot with an atomic temp→rename, so disk I/O never blocks training and a killed
+  job never leaves a corrupt checkpoint; set `async_checkpoint: false` for synchronous.
+- **Curves**: `python -m pred_ssl.scripts.plot_curves pred_ssl/logs/<tag>.log
+  pred_ssl/logs/<tag>.eval.log` → per-epoch CSV (+ PNG if matplotlib is installed)
+  of pretrain losses, `KNN_Acc`, and each linear probe's per-epoch Val loss/acc.
+
 ## Tests
 ```bash
 python -m pytest pred_ssl/tests/ -q     # CPU-only; no GPU/data needed

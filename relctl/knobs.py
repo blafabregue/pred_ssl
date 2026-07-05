@@ -85,8 +85,12 @@ KNOBS = [
          doc="Seeds random/numpy/torch in train.py."),
     Knob("save_dir", "data", "train", "path", "./checkpoints/default", cli_flag="--save-dir",
          doc="Where checkpoint_<epoch>.pth.tar is written."),
-    Knob("save_freq", "data", "train", "int", 50, valid=(1, None), cli_flag="--save-freq",
-         doc="Checkpoint every N epochs (final epoch always saved)."),
+    Knob("save_freq", "data", "train", "int", 10, valid=(1, None), cli_flag="--save-freq",
+         doc="Checkpoint cadence in epochs: rolling checkpoint_last (always) + milestones "
+             "(unless --save-latest); the final epoch and checkpoint_best are always saved."),
+    Knob("async_checkpoint", "data", "train", "bool", True,
+         doc="Write checkpoints on a background thread (decoupled CPU snapshot + atomic "
+             "rename) so disk I/O never blocks training; false = fully synchronous."),
     Knob("print_freq", "data", "train", "int", 20, valid=(1, None), cli_flag="--print-freq",
          doc="In-epoch progress line every N iters (epoch summary always printed)."),
 
@@ -223,6 +227,17 @@ KNOBS = [
          note="All 6 keys required (a missing key KeyErrors at runtime).",
          doc="Per-factor minimum 'different' gap for the continuous factors; for crop it is "
              "the MAX IoU allowed between 'different' boxes (keep >= crop_scale[0])."),
+
+    # ---- Pretraining kNN monitor (train domain, shown with the eval knobs) ----
+    Knob("knn_eval_freq", "eval", "train", "int", 5, valid=(0, None),
+         coupling="drives checkpoint_best.pth.tar (0 -> best falls back to lowest train loss)",
+         doc="Run the kNN val probe every N pretraining epochs (0 = off); logs 'KNN_Acc: x%'."),
+    Knob("knn_k", "eval", "train", "int", 20, valid=(1, None),
+         doc="Neighbours for the kNN val probe."),
+    Knob("knn_temp", "eval", "train", "float", 0.07, valid=(0.0, None),
+         doc="Softmax temperature of the weighted kNN vote (InstDisc/MoCo protocol)."),
+    Knob("knn_per_class", "eval", "train", "int", 100, valid=(1, None),
+         doc="Train-bank images per class for the kNN val probe."),
 
     # ---- Eval / probe knobs ----
     Knob("eval_epochs", "eval", "eval_lincls", "int", 200, valid=(1, None), cli_flag="--epochs",

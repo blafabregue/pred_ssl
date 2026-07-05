@@ -41,12 +41,18 @@ CKPT="${SAVE_DIR}/checkpoint_$(printf '%04d' "${EPOCHS}").pth.tar"
 : > "${EVAL_LOG}"
 echo "eval ${TAG}  ckpt=${CKPT}  started: $(date)" | tee -a "${EVAL_LOG}"
 
+# STEP markers drive scripts/extract_results.py section detection (same convention
+# as run_pipeline.sh) — without them the Val accuracies are not extracted.
+echo "STEP 2: ImageNet-100 Object Linear Eval" | tee -a "${EVAL_LOG}"
 python -m pred_ssl.eval.linear_probe --data "${IN100}" --pretrained "${CKPT}" \
     --arch "${ARCH}" --epochs "${EVAL_EPOCHS}" 2>&1 | tee -a "${EVAL_LOG}"
+echo "STEP 3: ImageNet-100 Rotation Linear Eval" | tee -a "${EVAL_LOG}"
 python -m pred_ssl.eval.linear_probe --data "${IN100}" --pretrained "${CKPT}" \
     --arch "${ARCH}" --epochs "${EVAL_EPOCHS}" --eval-rotation 2>&1 | tee -a "${EVAL_LOG}"
+echo "STEP 4: CUB-200 Object Linear Eval" | tee -a "${EVAL_LOG}"
 python -m pred_ssl.eval.linear_probe --data "${CUB}" --pretrained "${CKPT}" \
     --arch "${ARCH}" --epochs "${EVAL_EPOCHS}" 2>&1 | tee -a "${EVAL_LOG}"
+echo "STEP 5: Flowers-102 Few-shot Eval" | tee -a "${EVAL_LOG}"
 python -m pred_ssl.eval.few_shot --data "${FLOWERS}" --pretrained "${CKPT}" \
     --arch "${ARCH}" 2>&1 | tee -a "${EVAL_LOG}"
 

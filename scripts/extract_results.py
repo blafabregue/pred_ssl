@@ -22,6 +22,7 @@ FACTORS = ["rotation", "hflip", "brightness", "contrast",
 _EPOCH = re.compile(r"Epoch \[\d+/\d+\]\s+Loss:\s+([\d.]+)(?:\s+SSL_Loss:\s+([\d.]+))?"
                     r"\s+Pred_Loss:\s+([\d.]+)\s+Pred_Acc:\s+([\d.]+)%")
 _PERFACTOR = re.compile(r"PerFactor:\s+(.*)")
+_KNN = re.compile(r"KNN_Acc:\s+([\d.]+)%")
 _BEST_ACC1 = re.compile(r"Val Acc@1:\s+([\d.]+)%")
 _BEST_ACC5 = re.compile(r"Val Acc@5:\s+([\d.]+)%")
 _SHOT = re.compile(r"(\d+)-shot:\s+([\d.]+)%\s+\(.*?([\d.]+)%\)")
@@ -42,6 +43,7 @@ def _section(line):
 def parse_log(path):
     r = {c: "" for c in (
         "pretrain_loss", "pretrain_ssl_loss", "pretrain_pred_loss", "pretrain_pred_acc",
+        "knn_acc",
         "in100_acc1", "in100_acc5", "rotation_acc1", "cub200_acc1", "cub200_acc5",
         "flowers_5shot", "flowers_5shot_ci", "flowers_10shot", "flowers_10shot_ci")}
     for f in FACTORS:
@@ -52,7 +54,8 @@ def parse_log(path):
             s = _section(line)
             if s:
                 sec = s
-            if sec == "pretrain":
+            # sec None == a matrix pretrain log (logs/<tag>.log has no STEP markers)
+            if sec in (None, "pretrain"):
                 m = _EPOCH.search(line)
                 if m:
                     r["pretrain_loss"] = m.group(1)
@@ -66,6 +69,9 @@ def parse_log(path):
                             k, v = tok.split("=", 1)
                             if k in FACTORS:
                                 r[f"pf_{k}"] = v
+                km = _KNN.search(line)
+                if km:
+                    r["knn_acc"] = km.group(1)
             if "*BEST*" in line:
                 a1, a5 = _BEST_ACC1.search(line), _BEST_ACC5.search(line)
                 if a1 and sec == "in100":
@@ -105,7 +111,7 @@ def main():
     args = ap.parse_args()
 
     fieldnames = (["framework", "experiment", "pretrain_loss", "pretrain_ssl_loss",
-                   "pretrain_pred_loss", "pretrain_pred_acc"]
+                   "pretrain_pred_loss", "pretrain_pred_acc", "knn_acc"]
                   + [f"pf_{f}" for f in FACTORS]
                   + ["in100_acc1", "in100_acc5", "rotation_acc1", "cub200_acc1",
                      "cub200_acc5", "flowers_5shot", "flowers_5shot_ci",

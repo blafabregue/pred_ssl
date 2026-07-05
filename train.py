@@ -28,8 +28,10 @@ import yaml
 # Make `pred_ssl` importable whether run as `python -m pred_ssl.train` or `python pred_ssl/train.py`.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from pred_ssl.ckpt import AsyncCheckpointSaver, snapshot_to_cpu  # noqa: E402
 from pred_ssl.data.loader import build_pretrain_loader  # noqa: E402
 from pred_ssl.data.transforms import FACTORS  # noqa: E402
+from pred_ssl.eval.knn import build_knn_monitor  # noqa: E402
 from pred_ssl.losses import RelPairLoss, SplitDecovLoss  # noqa: E402
 from pred_ssl.models.frameworks import backbone_state_dict, build_model, encode_features  # noqa: E402
 from pred_ssl.models.rel_head import RelHead  # noqa: E402
@@ -111,13 +113,6 @@ def adjust_learning_rate(optimizer, epoch, cfg, base_lr):
     for pg in optimizer.param_groups:
         pg["lr"] = lr
     return lr
-
-
-def save_checkpoint(state, save_dir, filename):
-    os.makedirs(save_dir, exist_ok=True)
-    path = os.path.join(save_dir, filename)
-    torch.save(state, path)
-    print(f"  => Saved checkpoint: {path}")
 
 
 # ---------------------------------------------------------------------------
@@ -224,10 +219,10 @@ def main():
     parser.add_argument("--save-dir", default=None)
     parser.add_argument("--save-freq", type=int, default=None)
     parser.add_argument("--save-latest", action="store_true",
-                        help="write intermediate checkpoints to a single overwritten "
-                             "checkpoint_last.pth.tar (disk-efficient, resume-friendly for "
-                             "time-limited SLURM jobs) instead of per-epoch milestones; the "
-                             "final checkpoint_<epochs>.pth.tar is still written for eval")
+                        help="suppress intermediate milestone checkpoints (disk-efficient "
+                             "SLURM mode); checkpoint_last.pth.tar (every epoch), "
+                             "checkpoint_best.pth.tar and the final "
+                             "checkpoint_<epochs>.pth.tar are always written regardless")
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--print-freq", type=int, default=None)
     parser.add_argument("--rel-lambda", type=float, default=None)
@@ -311,6 +306,8 @@ def main():
                                 weight_decay=cfg["weight_decay"])
 
     start_epoch = 0
+    best_metric = None
+    best_epoch = 0
     if args.resume and os.path.isfile(args.resume):
         print(f"=> resuming from {args.resume}")
         ckpt = torch.load(args.resume, map_location=device)
@@ -319,14 +316,42 @@ def main():
         if rel_head is not None and ckpt["state_dict"].get("rel_head") is not None:
             rel_head.load_state_dict(ckpt["state_dict"]["rel_head"])
         optimizer.load_state_dict(ckpt["optimizer"])
+        best_metric = ckpt.get("best_metric")
+        best_epoch = ckpt.get("best_epoch", 0)
 
     _, loader = build_pretrain_loader(cfg)
     print(f"=> train batches/epoch: {len(loader)}", flush=True)
+
+    # kNN val monitor: the "val accuracy per epoch" curve for SSL pretraining.
+    knn = build_knn_monitor(cfg)
+    knn_freq = cfg.get("knn_eval_freq", 0)
+    if knn is not None:
+        print(f"=> kNN monitor ON: every {knn_freq} epoch(s), "
+              f"k={cfg.get('knn_k', 20)}, bank {cfg.get('knn_per_class', 100)}/class "
+              f"({knn.num_classes} classes); 'best' = highest KNN_Acc", flush=True)
+    else:
+        print("=> kNN monitor off; 'best' = lowest train loss", flush=True)
 
     # Optional framework hook (BYOL uses it for the cosine tau schedule).
     if hasattr(model, "set_total_steps"):
         model.set_total_steps(cfg["epochs"] * len(loader))
 
+    # Background checkpoint writer (async disk I/O; snapshots decouple from live tensors).
+    saver = AsyncCheckpointSaver(enabled=cfg.get("async_checkpoint", True))
+    try:
+        _train_loop(cfg, model, rel_head, rel_criterion, optimizer, device, base_lr,
+                    loader, knn, knn_freq, split, decov_criterion, saver,
+                    start_epoch, best_metric, best_epoch, args)
+    finally:
+        saver.close()   # flush every queued write before we exit (final ckpt guaranteed)
+
+    print("\n=> Training complete!")
+    print(f"   Checkpoints in: {cfg['save_dir']}")
+
+
+def _train_loop(cfg, model, rel_head, rel_criterion, optimizer, device, base_lr,
+                loader, knn, knn_freq, split, decov_criterion, saver,
+                start_epoch, best_metric, best_epoch, args):
     for epoch in range(start_epoch, cfg["epochs"]):
         lr = adjust_learning_rate(optimizer, epoch, cfg, base_lr)
         loss_avg, ssl_loss_avg, pred_loss_avg, pred_acc_avg, factor_meters = train_one_epoch(
@@ -343,7 +368,23 @@ def main():
             print(f"  PerFactor: {parts}", flush=True)
 
         is_final = (epoch + 1) == cfg["epochs"]
-        if (epoch + 1) % cfg["save_freq"] == 0 or is_final:
+        on_save_freq = is_final or (epoch + 1) % cfg["save_freq"] == 0
+
+        # kNN val probe (the pretraining "validation accuracy" curve).
+        knn_acc = None
+        if knn is not None and ((epoch + 1) % knn_freq == 0 or is_final):
+            knn_acc = knn.evaluate(model, cfg["framework"], device)
+            print(f"  KNN_Acc: {knn_acc:.2f}%  (epoch {epoch + 1})", flush=True)
+
+        # 'best' = highest kNN val accuracy when the monitor runs; without the monitor,
+        # lowest train loss sampled on the save_freq cadence (avoids a write per epoch).
+        metric = knn_acc if knn is not None else (-loss_avg if on_save_freq else None)
+        improved = metric is not None and (best_metric is None or metric > best_metric)
+        if improved:
+            best_metric, best_epoch = metric, epoch + 1
+
+        need_milestone = is_final or (on_save_freq and not args.save_latest)
+        if on_save_freq or improved or need_milestone:
             state = {
                 "epoch": epoch + 1,
                 "arch": cfg["arch"],
@@ -355,17 +396,29 @@ def main():
                 "backbone_state_dict": backbone_state_dict(model, cfg["framework"]),
                 "optimizer": optimizer.state_dict(),
                 "cfg": cfg,
+                "best_metric": best_metric,
+                "best_epoch": best_epoch,
+                "knn_acc": knn_acc,
             }
-            # --save-latest: intermediate saves overwrite one checkpoint_last.pth.tar
-            # (so a time-limited job resumes from there); the final epoch always writes
-            # the canonical checkpoint_<epochs>.pth.tar that the eval scripts load.
-            if args.save_latest and not is_final:
-                save_checkpoint(state, cfg["save_dir"], "checkpoint_last.pth.tar")
-            else:
-                save_checkpoint(state, cfg["save_dir"], f"checkpoint_{epoch + 1:04d}.pth.tar")
-
-    print("\n=> Training complete!")
-    print(f"   Checkpoints in: {cfg['save_dir']}")
+            # One CPU snapshot per epoch, reused across the (up to three) filenames.
+            snap = snapshot_to_cpu(state)
+            # LAST: rolling checkpoint_last.pth.tar every save_freq epochs (<= save_freq
+            # epochs lost on a kill; sbatch_pretrain.slurm resumes from it).
+            if on_save_freq:
+                saver.save(snap, cfg["save_dir"], "checkpoint_last.pth.tar",
+                           verbose=False, snapshot=False)
+            # BEST: whenever the monitored metric improves.
+            if improved:
+                label = (f"KNN_Acc {best_metric:.2f}%" if knn is not None
+                         else f"loss {loss_avg:.4f}")
+                saver.save(snap, cfg["save_dir"], "checkpoint_best.pth.tar",
+                           verbose=False, snapshot=False)
+                print(f"  => new best ({label}) -> checkpoint_best.pth.tar", flush=True)
+            # MILESTONES + the canonical final checkpoint_<epochs>.pth.tar the evals load.
+            # --save-latest suppresses intermediate milestones (disk-friendly SLURM mode).
+            if need_milestone:
+                saver.save(snap, cfg["save_dir"], f"checkpoint_{epoch + 1:04d}.pth.tar",
+                           snapshot=False)
 
 
 if __name__ == "__main__":

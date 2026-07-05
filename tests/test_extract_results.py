@@ -17,6 +17,7 @@ SAMPLE_LOG = """\
 STEP 1: Pretrain (1 epochs)
 Epoch [1/1]  Loss: 2.2953  SSL_Loss: 1.9289  Pred_Loss: 0.7327  Pred_Acc: 43.91%  LR: 0.004687
   PerFactor: rotation=37.5 hflip=56.2 brightness=50.0 contrast=75.0 saturation=20.0 hue=10.0 grayscale=31.2 blur=75.0
+  KNN_Acc: 18.40%  (epoch 1)
 STEP 2: ImageNet-100 Object Linear Eval
 Linear Evaluation: Object Classification (100 classes)
 Epoch [1/1]  Train Loss: 1.3  Train Acc@1: 40.00%  Val Loss: 1.2  Val Acc@1: 62.00%  Val Acc@5: 90.00%  *BEST*
@@ -51,6 +52,22 @@ def test_parse_pretrain_and_perfactor(tmp_path):
     assert r["pretrain_ssl_loss"] == "1.9289"
     assert r["pretrain_pred_acc"] == "43.91"
     assert r["pf_rotation"] == "37.5" and r["pf_hue"] == "10.0"
+    assert r["knn_acc"] == "18.40"
+
+
+def test_parse_matrix_pretrain_log_without_step_markers(tmp_path):
+    # SLURM matrix pretrain logs (logs/<tag>.log) have NO "STEP n" markers: the
+    # pretrain metrics must still be extracted (section None == pretrain).
+    p = tmp_path / "simclr_relpred_resnet50_s1.log"
+    p.write_text(
+        "Epoch [10/500]  Loss: 5.9540  SSL_Loss: 5.5941  Pred_Loss: 0.7197  "
+        "Pred_Acc: 51.83%  LR: 0.028647\n"
+        "  PerFactor: rotation=51.1 crop=49.4\n"
+        "  KNN_Acc: 23.10%  (epoch 10)\n")
+    r = parse_log(str(p))
+    assert r["pretrain_loss"] == "5.9540"
+    assert r["pf_crop"] == "49.4"
+    assert r["knn_acc"] == "23.10"
 
 
 def test_parse_fewshot(tmp_path):

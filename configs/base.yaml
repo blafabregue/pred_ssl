@@ -10,7 +10,8 @@ momentum: 0.9
 weight_decay: 1.0e-4
 seed: 42
 save_dir: ./checkpoints/default
-save_freq: 50
+save_freq: 10                  # checkpoint_last (rolling) + milestones cadence, in epochs
+async_checkpoint: true         # write checkpoints on a background thread (false = synchronous)
 print_freq: 20
 
 # Learning-rate control (single selector; no conflicting cos/schedule pair).
@@ -25,6 +26,13 @@ rel_head_hidden: 2048
 rel_decoupled: false           # true -> SSL pair stays standard; a SEPARATE pair feeds the head
 # The head emits one logit per augmentation factor; the factor set (and its count)
 # is owned by data/transforms.py FACTORS, so there is nothing to configure here.
+
+# Pretraining kNN monitor: every N epochs, score the frozen features with a weighted
+# kNN on the val split (logged as "KNN_Acc: x%"; drives checkpoint_best.pth.tar).
+knn_eval_freq: 5               # 0 = off ('best' then falls back to lowest train loss)
+knn_k: 20
+knn_temp: 0.07
+knn_per_class: 100             # train-bank images per class
 
 # Latent split (disentanglement, experiment relpred_split). Off by default: both
 # heads see the full h. On: h is partitioned into [vanilla | common | rel]; the SSL

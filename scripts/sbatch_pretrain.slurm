@@ -21,7 +21,7 @@ EXPERIMENT=${EXPERIMENT:-relpred}
 ARCH=${ARCH:-resnet50}
 SEED=${SEED:-1}
 EPOCHS=${EPOCHS:-500}
-SAVE_FREQ=${SAVE_FREQ:-25}               # resume granularity (epochs lost on a kill <= this)
+SAVE_FREQ=${SAVE_FREQ:-10}               # checkpoint_last cadence (epochs lost on a kill <= this)
 IN100=${IN100:-./pred_ssl/datasets/imagenet100}
 SAVE_DIR=${SAVE_DIR:-./pred_ssl/checkpoints/${FRAMEWORK}_${EXPERIMENT}_${ARCH}_s${SEED}}
 LOG=${LOG:-./pred_ssl/logs/${FRAMEWORK}_${EXPERIMENT}_${ARCH}_s${SEED}.log}

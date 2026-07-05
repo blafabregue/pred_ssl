@@ -345,11 +345,13 @@ python -m pred_ssl.scripts.extract_results --logs-dir ./pred_ssl/logs --out ./pr
 Narrow the matrix by exporting the same env vars for BOTH commands, e.g.
 `FRAMEWORKS="simclr" VARIANTS="relpred relpred_proj3" SEEDS="1 2" bash pred_ssl/scripts/slurm_submit.sh`.
 
-**How resume works.** Pretraining runs with `--save-latest --save-freq 25`: intermediate
-progress is written to a single rolling `checkpoint_last.pth.tar` (so ≤ 25 epochs are lost
-on a kill and disk stays small), and the final `checkpoint_<epochs>.pth.tar` is written on
-completion for the evals. `sbatch_pretrain.slurm` finds that checkpoint and passes
-`--resume` automatically; the pretrain log is appended (never truncated) across resubmits.
+**How resume works.** The rolling `checkpoint_last.pth.tar` is written every
+`save_freq` epochs (default 10 — ≤ 10 epochs lost on a kill; disk stays small, one
+file), `checkpoint_best.pth.tar` tracks the best kNN-monitor accuracy,
+`--save-latest` suppresses intermediate milestones, and the final
+`checkpoint_<epochs>.pth.tar` is written on completion for the evals.
+`sbatch_pretrain.slurm` finds the last checkpoint and passes `--resume`
+automatically; the pretrain log is appended (never truncated) across resubmits.
 Each experiment has its own `checkpoints/<tag>/` and `logs/<tag>.log`, with
 `tag = <framework>_<variant>_<arch>_s<seed>`.
 
@@ -363,7 +365,9 @@ Launch a **single** experiment directly if you prefer:
 | What | Where |
 |---|---|
 | Checkpoints | `pred_ssl/checkpoints/<framework>_<experiment>/checkpoint_<epoch>.pth.tar` |
-| Run logs | `pred_ssl/logs/<framework>_<experiment>.log` |
+| Rolling last / best | same dir: `checkpoint_last.pth.tar` (every `save_freq`=10 epochs) / `checkpoint_best.pth.tar` (best kNN acc) |
+| Run logs | `pred_ssl/logs/<framework>_<experiment>.log` (incl. per-epoch `KNN_Acc` when the monitor is on) |
+| Per-epoch curves | `python -m pred_ssl.scripts.plot_curves <log...>` → `<log>.curves.csv` / `.png` |
 | Collected results | `pred_ssl/results.csv` |
 | relctl runtime state | `pred_ssl/.relctl/` (jobs registry, generated config overlays) |
 | Saved relctl profiles | `pred_ssl/relctl/profiles/` |
