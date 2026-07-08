@@ -41,7 +41,7 @@ VARIANTS = {
 DEFAULT_VARIANTS = ["baseline", "relpred", "relpred_proj3"]
 
 DEFAULT_FRAMEWORKS = ["simclr", "moco", "byol", "looc", "vicreg"]
-DEFAULT_SEEDS = ["1", "2", "3"]
+DEFAULT_SEEDS = ["1", "2", "3", "4", "5"]
 
 
 def _env_list(name, default):
