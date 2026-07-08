@@ -9,16 +9,15 @@ The matrix is env-overridable (so `bash slurm_submit.sh` runs the right subset o
 box, and you can narrow it without editing code):
 
     FRAMEWORKS   space-separated (default: simclr moco byol looc vicreg)
-    VARIANTS     space-separated (default: baseline relpred relpred_proj3)
-    SEEDS        space-separated (default: 1 2 3)          # repeats for statistical noise
+    VARIANTS     space-separated (default: baseline relpred relpred_proj3 relpred_split)
+    SEEDS        space-separated (default: 1 2 3 4 5)       # repeats for statistical noise
     ARCH         resnet18 | resnet50 (default: resnet50)
     EPOCHS       pretraining epochs (default: 500)
 
-The three default variants (per the study design):
+The four default variants (per the study design):
     baseline       vanilla SSL, no relational head            (experiment: baseline)
     relpred        vanilla + the new relational loss          (experiment: relpred)
     relpred_proj3  relpred + the new 3-layer projection head  (experiment: relpred_proj3)
-Opt-in (add via VARIANTS="... relpred_split"):
     relpred_split  relpred + latent split [vanilla|common|rel] (experiment: relpred_split)
 
 Usage:
@@ -36,9 +35,8 @@ VARIANTS = {
     "relpred_split": ("relpred_split", "relpred + latent split [vanilla|common|rel]"),
 }
 
-# Default matrix (opt-in variants like relpred_split are NOT included by default;
-# add them via VARIANTS="... relpred_split").
-DEFAULT_VARIANTS = ["baseline", "relpred", "relpred_proj3"]
+# Default matrix. Narrow with VARIANTS="baseline relpred" (etc.).
+DEFAULT_VARIANTS = ["baseline", "relpred", "relpred_proj3", "relpred_split"]
 
 DEFAULT_FRAMEWORKS = ["simclr", "moco", "byol", "looc", "vicreg"]
 DEFAULT_SEEDS = ["1", "2", "3", "4", "5"]
