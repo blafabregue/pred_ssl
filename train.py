@@ -208,7 +208,8 @@ def main():
                         choices=["simclr", "moco", "byol", "looc", "vicreg"])
     parser.add_argument("--experiment", default="relpred",
                         help="config in configs/experiment/ (baseline|relpred|"
-                             "relpred_lambda0|relpred_decoupled|relpred_proj3|relpred_split)")
+                             "relpred_lambda0|relpred_decoupled|relpred_proj3|relpred_split|"
+                             "relpred_split_80_10_10|relpred_split_45_45_10)")
     # overrides
     parser.add_argument("--data", default=None)
     parser.add_argument("--arch", default=None, choices=["resnet18", "resnet50"])

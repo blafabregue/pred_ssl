@@ -9,16 +9,18 @@ The matrix is env-overridable (so `bash slurm_submit.sh` runs the right subset o
 box, and you can narrow it without editing code):
 
     FRAMEWORKS   space-separated (default: simclr moco byol looc vicreg)
-    VARIANTS     space-separated (default: baseline relpred relpred_proj3 relpred_split)
+    VARIANTS     space-separated (default: all six variants below)
     SEEDS        space-separated (default: 1 2 3 4 5)       # repeats for statistical noise
     ARCH         resnet18 | resnet50 (default: resnet50)
     EPOCHS       pretraining epochs (default: 500)
 
-The four default variants (per the study design):
+The default variants (per the study design):
     baseline       vanilla SSL, no relational head            (experiment: baseline)
     relpred        vanilla + the new relational loss          (experiment: relpred)
     relpred_proj3  relpred + the new 3-layer projection head  (experiment: relpred_proj3)
-    relpred_split  relpred + latent split [vanilla|common|rel] (experiment: relpred_split)
+    relpred_split  relpred + latent split [vanilla|common|rel] 0.50/0.25/0.25
+    relpred_split_80_10_10  latent split 0.80/0.10/0.10 (vanilla-heavy)
+    relpred_split_45_45_10  latent split 0.45/0.45/0.10 (common-heavy)
 
 Usage:
     python -m pred_ssl.scripts.experiments               # human table
@@ -32,11 +34,16 @@ VARIANTS = {
     "baseline":      ("baseline",      "vanilla SSL, no relational head"),
     "relpred":       ("relpred",       "vanilla + relational loss"),
     "relpred_proj3": ("relpred_proj3", "relpred + custom 3-layer projection head"),
-    "relpred_split": ("relpred_split", "relpred + latent split [vanilla|common|rel]"),
+    "relpred_split": ("relpred_split", "relpred + latent split 0.50/0.25/0.25"),
+    "relpred_split_80_10_10": ("relpred_split_80_10_10",
+                               "relpred + latent split 0.80/0.10/0.10 (vanilla-heavy)"),
+    "relpred_split_45_45_10": ("relpred_split_45_45_10",
+                               "relpred + latent split 0.45/0.45/0.10 (common-heavy)"),
 }
 
 # Default matrix. Narrow with VARIANTS="baseline relpred" (etc.).
-DEFAULT_VARIANTS = ["baseline", "relpred", "relpred_proj3", "relpred_split"]
+DEFAULT_VARIANTS = ["baseline", "relpred", "relpred_proj3", "relpred_split",
+                    "relpred_split_80_10_10", "relpred_split_45_45_10"]
 
 DEFAULT_FRAMEWORKS = ["simclr", "moco", "byol", "looc", "vicreg"]
 DEFAULT_SEEDS = ["1", "2", "3", "4", "5"]

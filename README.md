@@ -55,6 +55,9 @@ predictor). VICReg's `native` head is its own configurable expander (`vicreg_*`)
   partitioned into `[vanilla | common | rel]` (ratios `split_ratios`, default
   0.5/0.25/0.25); the SSL head consumes vanilla+common, the relational head
   common+rel, so each exclusive block only receives its own loss's gradient.
+  Two ratio variants probe the partition geometry: `relpred_split_80_10_10`
+  (vanilla-heavy) and `relpred_split_45_45_10` (common-heavy, tiny exclusive
+  blocks).
   Optional `split_decov_lambda > 0` actively decorrelates the exclusive blocks.
   Measure it with `eval.linear_probe --feat-slice vanilla|common|rel` (rotation
   probe should be strong on `rel`, object probe strong on `vanilla`).

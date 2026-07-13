@@ -1,0 +1,8 @@
+# relpred_split with a common-heavy partition: [vanilla | common | rel] =
+# 0.45 / 0.45 / 0.1. Both heads share a large common block (90% for SSL, 55%
+# for the relational head) with tiny exclusive blocks — tests whether the
+# benefit comes from the shared arbitration rather than from exclusivity.
+rel_lambda: 0.5
+aug_sharing: true
+feat_split: true
+split_ratios: [0.45, 0.45, 0.1]

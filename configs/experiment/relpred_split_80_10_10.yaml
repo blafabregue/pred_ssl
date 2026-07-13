@@ -1,0 +1,7 @@
+# relpred_split with a vanilla-heavy partition: [vanilla | common | rel] =
+# 0.8 / 0.1 / 0.1. The SSL head sees 90% of h, the relational head only 20% —
+# tests whether a small equivariant budget is enough for the relational task.
+rel_lambda: 0.5
+aug_sharing: true
+feat_split: true
+split_ratios: [0.8, 0.1, 0.1]

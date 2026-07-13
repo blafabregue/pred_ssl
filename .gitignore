@@ -3,6 +3,8 @@ __pycache__/
 checkpoints/
 logs/
 results.csv
+# ICLR paper draft (local only, not pushed)
+paper/
 imagenet100
 pilot_in100/
 # datasets/: keep the folder skeleton + README, ignore the actual (huge) data

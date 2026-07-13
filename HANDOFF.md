@@ -293,7 +293,9 @@ Useful env-var overrides for any script: `GPU`, `CONDA_ENV`, `ARCH`, `EPOCHS`,
   (`proj_preset=custom`, `proj_layers=3`).
 - `relpred_split` — `relpred` **plus the latent split** (disentanglement): h is cut
   into `[vanilla | common | rel]` blocks (`split_ratios`, default 0.5/0.25/0.25);
-  the SSL head sees vanilla+common, the relational head sees common+rel.
+  the SSL head sees vanilla+common, the relational head sees common+rel. The
+  `relpred_split_80_10_10` and `relpred_split_45_45_10` variants run the same
+  method with vanilla-heavy / common-heavy ratios (partition-geometry ablation).
   `split_decov_lambda > 0` adds a decorrelation penalty between the exclusive blocks.
   Per-slice measurement: `python -m pred_ssl.eval.linear_probe ... --feat-slice rel`.
   Opt-in in the SLURM matrix: `VARIANTS="baseline relpred relpred_split" ...`.

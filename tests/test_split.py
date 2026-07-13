@@ -93,6 +93,25 @@ def test_build_split_reads_cfg():
     assert not s.enabled
 
 
+def test_matrix_ratio_variants_resolve():
+    # The two extra matrix experiments (80/10/10 and 45/45/10) must produce
+    # valid partitions on both supported feat_dims.
+    import yaml
+    cfg_dir = os.path.join(os.path.dirname(__file__), "..", "configs", "experiment")
+    for name, expected_2048 in [
+        ("relpred_split_80_10_10", (1638, 205, 205)),
+        ("relpred_split_45_45_10", (921, 922, 205)),
+    ]:
+        with open(os.path.join(cfg_dir, name + ".yaml")) as f:
+            cfg = yaml.safe_load(f)
+        assert cfg["feat_split"] is True and abs(sum(cfg["split_ratios"]) - 1.0) < 1e-9
+        s50 = build_split(cfg, 2048)   # resnet50
+        assert (s50.n_vanilla, s50.n_common, s50.n_rel) == expected_2048
+        s18 = build_split(cfg, 512)    # resnet18
+        assert s18.n_vanilla + s18.n_common + s18.n_rel == 512
+        assert s18.ssl_dim > 0 and s18.rel_dim > 0
+
+
 # ---------------------------------------------------------------------------
 # (2) THE property: gradient-level separation at h
 # ---------------------------------------------------------------------------
