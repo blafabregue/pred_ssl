@@ -33,7 +33,12 @@ def _run_matrix(**env):
 
 def test_default_matrix_shape():
     m = _run_matrix()
-    assert len(m) == 5 * 3 * 3                      # 5 frameworks x 3 variants x 3 seeds
+    # Tie to the actual default lists so the test tracks matrix growth (extra
+    # variants/seeds) instead of a hard-coded count.
+    expected = (len(experiments.DEFAULT_FRAMEWORKS)
+                * len(experiments.DEFAULT_VARIANTS)
+                * len(experiments.DEFAULT_SEEDS))
+    assert len(m) == expected
     assert len({e["tag"] for e in m}) == len(m)     # tags are unique
     e = m[0]
     assert set(e) >= {"tag", "framework", "experiment", "arch", "seed", "epochs", "save_dir", "log"}

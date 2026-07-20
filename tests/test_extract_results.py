@@ -11,7 +11,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from pred_ssl.scripts.extract_results import parse_log, split_name  # noqa: E402
+from pred_ssl.scripts.extract_results import parse_log, parse_tag, split_name  # noqa: E402
+from pred_ssl.scripts.aggregate_results import aggregate  # noqa: E402
 
 SAMPLE_LOG = """\
 STEP 1: Pretrain (1 epochs)
@@ -83,6 +84,32 @@ def test_split_name():
     assert split_name("moco_baseline") == ("moco", "baseline")
     assert split_name("simclr_relpred_lambda0") == ("simclr", "relpred_lambda0")
     assert split_name("looc_relpred") == ("looc", "relpred")
+
+
+def test_parse_tag_matrix_and_pipeline():
+    # matrix naming: fw_variant_arch_sN, with an underscore-laden variant
+    assert parse_tag("simclr_baseline_resnet50_s1") == ("simclr", "baseline", "resnet50", 1)
+    assert parse_tag("moco_relpred_split_80_10_10_resnet50_s3") == \
+        ("moco", "relpred_split_80_10_10", "resnet50", 3)
+    assert parse_tag("byol_relpred_resnet18_s12") == ("byol", "relpred", "resnet18", 12)
+    # pipeline naming (no arch/seed suffix): arch='', seed=None
+    assert parse_tag("simclr_relpred") == ("simclr", "relpred", "", None)
+
+
+def test_aggregate_mean_std_over_seeds():
+    rows = [
+        {"framework": "simclr", "variant": "relpred", "in100_acc1": "60.0", "rotation_acc1": "68.0"},
+        {"framework": "simclr", "variant": "relpred", "in100_acc1": "62.0", "rotation_acc1": "70.0"},
+        {"framework": "simclr", "variant": "baseline", "in100_acc1": "59.0", "rotation_acc1": "40.0"},
+    ]
+    agg = aggregate(rows)
+    mean, std, n = agg[("simclr", "relpred")]["in100_acc1"]
+    assert (mean, n) == (61.0, 2) and abs(std - 1.4142) < 1e-3
+    # single-seed group -> std 0, not a crash
+    mean1, std1, n1 = agg[("simclr", "baseline")]["in100_acc1"]
+    assert (mean1, std1, n1) == (59.0, 0.0, 1)
+    # a metric absent from every row -> None, not a crash
+    assert agg[("simclr", "baseline")]["cub200_acc1"] is None
 
 
 if __name__ == "__main__":

@@ -103,6 +103,24 @@ def split_name(stem, known=("simclr", "moco", "byol", "looc", "vicreg")):
     return parts[0], (parts[1] if len(parts) > 1 else "")
 
 
+_TAG = re.compile(r"^(?P<body>.+)_(?P<arch>resnet\d+)_s(?P<seed>\d+)$")
+
+
+def parse_tag(stem):
+    """(framework, variant, arch, seed) from a matrix tag ``fw_variant_arch_sN``.
+
+    The variant may itself contain underscores (e.g. relpred_split_80_10_10), so we
+    peel the fixed ``_<arch>_s<seed>`` suffix first. Falls back to (fw, variant, '',
+    None) for the older pipeline naming ``fw_variant`` with no arch/seed suffix.
+    """
+    m = _TAG.match(stem)
+    if m:
+        fw, variant = split_name(m.group("body"))
+        return fw, variant, m.group("arch"), int(m.group("seed"))
+    fw, variant = split_name(stem)
+    return fw, variant, "", None
+
+
 def main():
     ap = argparse.ArgumentParser(description="pred_ssl results extractor")
     ap.add_argument("--logs-dir", default="./pred_ssl/logs")
@@ -110,23 +128,34 @@ def main():
     ap.add_argument("--glob", default="*.log")
     args = ap.parse_args()
 
-    fieldnames = (["framework", "experiment", "pretrain_loss", "pretrain_ssl_loss",
+    fieldnames = (["framework", "variant", "arch", "seed",
+                   "pretrain_loss", "pretrain_ssl_loss",
                    "pretrain_pred_loss", "pretrain_pred_acc", "knn_acc"]
                   + [f"pf_{f}" for f in FACTORS]
                   + ["in100_acc1", "in100_acc5", "rotation_acc1", "cub200_acc1",
                      "cub200_acc5", "flowers_5shot", "flowers_5shot_ci",
                      "flowers_10shot", "flowers_10shot_ci"])
 
+    all_logs = sorted(glob.glob(os.path.join(args.logs_dir, args.glob)))
+    # Primary = pretrain / combined logs; <tag>.eval.log is merged into its sibling.
+    primary = [p for p in all_logs if not p.endswith(".eval.log")]
+
     rows = []
-    for path in sorted(glob.glob(os.path.join(args.logs_dir, args.glob))):
+    for path in primary:
         stem = os.path.splitext(os.path.basename(path))[0]
-        fw, exp = split_name(stem)
-        row = {"framework": fw, "experiment": exp}
-        row.update(parse_log(path))
+        rec = parse_log(path)
+        eval_sibling = path[:-len(".log")] + ".eval.log"
+        if os.path.isfile(eval_sibling):
+            for k, v in parse_log(eval_sibling).items():
+                if v not in ("", None) and rec.get(k, "") in ("", None):
+                    rec[k] = v   # eval metrics fill the blanks left by the pretrain log
+        fw, variant, arch, seed = parse_tag(stem)
+        row = {"framework": fw, "variant": variant, "arch": arch, "seed": seed}
+        row.update(rec)
         rows.append(row)
-        print(f"parsed {os.path.basename(path)}: in100={row['in100_acc1']} "
-              f"rot={row['rotation_acc1']} cub={row['cub200_acc1']} "
-              f"5shot={row['flowers_5shot']} 10shot={row['flowers_10shot']}")
+        print(f"parsed {os.path.basename(path)}: {fw}/{variant} s{seed} "
+              f"in100={row['in100_acc1']} rot={row['rotation_acc1']} "
+              f"cub={row['cub200_acc1']} 10shot={row['flowers_10shot']}")
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w", newline="") as f:

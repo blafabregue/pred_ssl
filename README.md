@@ -155,9 +155,13 @@ env vars for the scripts.
   Writes happen on a background thread (`async_checkpoint: true`) from a decoupled CPU
   snapshot with an atomic temp→rename, so disk I/O never blocks training and a killed
   job never leaves a corrupt checkpoint; set `async_checkpoint: false` for synchronous.
-- **Curves**: `python -m pred_ssl.scripts.plot_curves pred_ssl/logs/<tag>.log
+- **Curves (one run)**: `python -m pred_ssl.scripts.plot_curves pred_ssl/logs/<tag>.log
   pred_ssl/logs/<tag>.eval.log` → per-epoch CSV (+ PNG if matplotlib is installed)
   of pretrain losses, `KNN_Acc`, and each linear probe's per-epoch Val loss/acc.
+- **Progression (one plot per model, all seeds)**:
+  `python -m pred_ssl.scripts.plot_progression --logs-dir pred_ssl/logs --out-dir pred_ssl/curves`
+  → one figure per (framework, variant) with the per-epoch mean and a ±1 std band
+  over seeds (kNN accuracy + loss); `--metrics`, `--show-seeds`, `--min-seeds` tune it.
 
 ## Tests
 ```bash

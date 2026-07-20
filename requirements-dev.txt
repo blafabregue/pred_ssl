@@ -1,8 +1,10 @@
 # pred_ssl — optional UI + test/dev extras (on top of requirements.txt).
 #
-#   rich   : auto-upgrades relctl's rendering when present (import-guarded; the
-#            plain zero-dependency UI is used if it is missing).
-#   pytest : runs the CPU-only unit suite (pred_ssl/tests/).
+#   rich       : auto-upgrades relctl's rendering when present (import-guarded; the
+#                plain zero-dependency UI is used if it is missing).
+#   pytest     : runs the CPU-only unit suite (pred_ssl/tests/).
+#   matplotlib : PNGs for scripts/plot_curves.py and scripts/plot_progression.py
+#                (both degrade to CSV-only when it is absent).
 #
 # Install:  pip install -r pred_ssl/requirements-dev.txt
 
@@ -10,3 +12,4 @@
 
 rich>=13.0
 pytest>=7.0
+matplotlib>=3.5

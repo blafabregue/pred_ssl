@@ -340,9 +340,18 @@ python -m pred_ssl.scripts.slurm_status
 bash pred_ssl/scripts/slurm_submit.sh
 #    repeat 2–3 until slurm_status shows everything DONE.
 
-# 4) collect the numbers
+# 4) collect the numbers (per run) and aggregate over seeds (mean±std)
 python -m pred_ssl.scripts.extract_results --logs-dir ./pred_ssl/logs --out ./pred_ssl/results.csv
+python -m pred_ssl.scripts.aggregate_results --in ./pred_ssl/results.csv --out ./pred_ssl/results_agg.csv
+#   -> copy results.csv (+ results_agg.csv) off the cluster, e.g.
+#      scp <user>@<host>:<path>/pred_ssl/results*.csv .
 ```
+
+`extract_results` writes one row per run (framework/variant/arch/seed + all
+metrics, merging each `<tag>.log` pretrain log with its `<tag>.eval.log`);
+`aggregate_results` groups by (framework, variant) and reports mean±std over the
+seeds. Both are pure-stdlib (run in the cluster venv). `results.csv` is the
+single file to pull back to your laptop.
 
 Narrow the matrix by exporting the same env vars for BOTH commands, e.g.
 `FRAMEWORKS="simclr" VARIANTS="relpred relpred_proj3" SEEDS="1 2" bash pred_ssl/scripts/slurm_submit.sh`.
@@ -370,7 +379,8 @@ Launch a **single** experiment directly if you prefer:
 | Rolling last / best | same dir: `checkpoint_last.pth.tar` (every `save_freq`=10 epochs) / `checkpoint_best.pth.tar` (best kNN acc) |
 | Run logs | `pred_ssl/logs/<framework>_<experiment>.log` (incl. per-epoch `KNN_Acc` when the monitor is on) |
 | Per-epoch curves | `python -m pred_ssl.scripts.plot_curves <log...>` → `<log>.curves.csv` / `.png` |
-| Collected results | `pred_ssl/results.csv` |
+| Collected results (per run) | `pred_ssl/results.csv` (one row per seed; framework/variant/arch/seed + metrics) |
+| Aggregated stats | `pred_ssl/results_agg.csv` (mean±std over seeds per framework/variant) |
 | relctl runtime state | `pred_ssl/.relctl/` (jobs registry, generated config overlays) |
 | Saved relctl profiles | `pred_ssl/relctl/profiles/` |
 
