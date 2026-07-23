@@ -1,0 +1,10 @@
+# The method WITH a deeper custom projection head: relpred (per-factor sharing loader
+# + relational head, lambda = 0.5) plus proj_preset=custom / proj_layers=6 — the same
+# shared MLP as relpred_proj3 but twice as deep, to test how far the "deeper projector
+# improves transfer" trend of relpred_proj3 keeps going.
+# proj_hidden / proj_out / proj_bn inherit base.yaml (2048 / 256 / true), so the head is
+# Linear->BN->ReLU x5 -> Linear(2048, 256).
+rel_lambda: 0.5
+aug_sharing: true
+proj_preset: custom
+proj_layers: 6

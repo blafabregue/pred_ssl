@@ -71,6 +71,29 @@ def test_relpred_proj3_config():
     assert cfg["proj_hidden"] == 2048 and cfg["proj_out"] == 256 and cfg["proj_bn"] is True
 
 
+def test_relpred_proj6_config_and_head_depth():
+    import torch
+    from pred_ssl.models.projector import build_projector
+    cfg = _resolve("simclr", "relpred_proj6")
+    assert cfg["rel_lambda"] == 0.5 and cfg["aug_sharing"] is True
+    assert cfg["proj_preset"] == "custom" and cfg["proj_layers"] == 6
+    # the built head really has 6 Linear layers and the right in/out dims
+    head = build_projector(cfg, 2048, lambda: None)
+    linears = [m for m in head.modules() if isinstance(m, torch.nn.Linear)]
+    assert len(linears) == 6
+    assert linears[0].in_features == 2048 and linears[-1].out_features == 256
+    assert head(torch.randn(4, 2048)).shape == (4, 256)
+
+
+def test_split_variants_are_opt_in_not_default():
+    # kept runnable (config + VARIANTS entry) but out of the default matrix
+    for v in ("relpred_split", "relpred_split_80_10_10", "relpred_split_45_45_10"):
+        assert v in experiments.VARIANTS
+        assert v not in experiments.DEFAULT_VARIANTS
+    m = _run_matrix(VARIANTS="relpred_split", FRAMEWORKS="simclr", SEEDS="1")
+    assert len(m) == 1 and m[0]["experiment"] == "relpred_split"
+
+
 def test_baseline_and_relpred_configs():
     base = _resolve("vicreg", "baseline")
     assert base["rel_lambda"] == 0.0 and base["proj_preset"] == "native"

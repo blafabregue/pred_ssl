@@ -18,9 +18,9 @@ The default variants (per the study design):
     baseline       vanilla SSL, no relational head            (experiment: baseline)
     relpred        vanilla + the new relational loss          (experiment: relpred)
     relpred_proj3  relpred + the new 3-layer projection head  (experiment: relpred_proj3)
-    relpred_split  relpred + latent split [vanilla|common|rel] 0.50/0.25/0.25
-    relpred_split_80_10_10  latent split 0.80/0.10/0.10 (vanilla-heavy)
-    relpred_split_45_45_10  latent split 0.45/0.45/0.10 (common-heavy)
+    relpred_proj6  relpred + a 6-layer projection head        (experiment: relpred_proj6)
+Opt-in (latent-split / disentanglement study, add via VARIANTS="... relpred_split"):
+    relpred_split, relpred_split_80_10_10, relpred_split_45_45_10
 
 Usage:
     python -m pred_ssl.scripts.experiments               # human table
@@ -34,6 +34,11 @@ VARIANTS = {
     "baseline":      ("baseline",      "vanilla SSL, no relational head"),
     "relpred":       ("relpred",       "vanilla + relational loss"),
     "relpred_proj3": ("relpred_proj3", "relpred + custom 3-layer projection head"),
+    "relpred_proj6": ("relpred_proj6", "relpred + custom 6-layer projection head"),
+    # Latent-split (disentanglement) variants: kept runnable but OUT of the default
+    # matrix — across frameworks they matched or slightly trailed plain relpred, and the
+    # three ratio settings were indistinguishable. Run them explicitly with
+    # VARIANTS="relpred_split ..." if you want the partition study.
     "relpred_split": ("relpred_split", "relpred + latent split 0.50/0.25/0.25"),
     "relpred_split_80_10_10": ("relpred_split_80_10_10",
                                "relpred + latent split 0.80/0.10/0.10 (vanilla-heavy)"),
@@ -41,9 +46,8 @@ VARIANTS = {
                                "relpred + latent split 0.45/0.45/0.10 (common-heavy)"),
 }
 
-# Default matrix. Narrow with VARIANTS="baseline relpred" (etc.).
-DEFAULT_VARIANTS = ["baseline", "relpred", "relpred_proj3", "relpred_split",
-                    "relpred_split_80_10_10", "relpred_split_45_45_10"]
+# Default matrix. Narrow/extend with VARIANTS="baseline relpred" (etc.).
+DEFAULT_VARIANTS = ["baseline", "relpred", "relpred_proj3", "relpred_proj6"]
 
 DEFAULT_FRAMEWORKS = ["simclr", "moco", "byol", "looc", "vicreg"]
 DEFAULT_SEEDS = ["1", "2", "3", "4", "5"]

@@ -402,7 +402,20 @@ Launch a **single** experiment directly if you prefer:
   relctl (`r` → `n`/`t`) or via SLURM. relctl's job registry survives an SSH drop.
 - **Pretraining defaults** match each framework's original: SimCLR/BYOL `lr 0.3`
   (×bs/256, cosine); MoCo/LooC `lr 0.03`, step-decay `[300,400]`; batch 256, 500 epochs,
-  ResNet-50.
+  ResNet-50. **VICReg** uses `optimizer=lars` + `warmup_epochs=10` + `lr 0.2` +
+  `weight_decay 1e-6`: its loss is on un-normalized expander outputs and diverges to
+  NaN under plain SGD.
+- **`Loss: nan` / a framework at chance.** Training now aborts on the first non-finite
+  loss (instead of wasting the run). If it fires, the LR is too high for that setup —
+  use `optimizer=lars` with `warmup_epochs>0` and/or lower `lr`. Note: the garbage
+  checkpoints from a diverged run must be deleted before re-running, or
+  `sbatch_pretrain.slurm` sees `checkpoint_0500` and skips as "already complete".
+- **Silent CPU fallback / false "finished".** `sbatch_pretrain.slurm` now refuses to
+  run when CUDA is unavailable (a faulted GPU node would otherwise train on CPU at
+  ~400s/iter), and both SLURM scripts use `set -eo pipefail` so a crashed `python | tee`
+  aborts the job instead of printing the completion marker.
+- **VICReg CUDA OOM.** The 8192-d expander is memory-heavy; if a run OOMs on a shared
+  GPU, lower `vicreg_expander_dim` (relctl) or `batch_size`.
 
 ---
 

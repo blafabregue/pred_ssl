@@ -2,7 +2,9 @@ __pycache__/
 *.pyc
 checkpoints/
 logs/
+curves/
 results.csv
+results_agg.csv
 # ICLR paper draft (local only, not pushed)
 paper/
 imagenet100

@@ -14,11 +14,13 @@ save_freq: 10                  # checkpoint_last (rolling) + milestones cadence,
 async_checkpoint: true         # write checkpoints on a background thread (false = synchronous)
 print_freq: 20
 
-# Learning-rate control (single selector; no conflicting cos/schedule pair).
+# Optimizer + learning-rate control.
+optimizer: sgd                 # sgd | lars  (lars: bias/norm excluded from wd+adaptation)
 lr: 0.3
 lr_scale_by_batch: true        # lr *= batch_size / 256
 lr_schedule: cosine            # cosine | step
 schedule: [300, 400]           # step-decay milestones (used only when lr_schedule == step)
+warmup_epochs: 0               # linear LR warmup over the first N epochs (0 = off)
 
 # Relational head.
 rel_lambda: 0.5                # experiment overrides: baseline -> 0.0

@@ -1,9 +1,13 @@
 framework: vicreg
-# Same "large-LR, cosine, no momentum encoder" family as SimCLR/BYOL; the repo
-# approximates the paper's LARS with SGD (as it already does for SimCLR/BYOL).
-lr: 0.3
+# VICReg's loss is on the UN-normalized expander outputs (coeffs x25), so plain SGD
+# at lr 0.3 diverges to NaN in a few steps. Use LARS + LR warmup + the paper's small
+# weight decay (1e-6), matching the official VICReg recipe.
+optimizer: lars
+lr: 0.2                         # VICReg base-lr (x batch/256); LARS makes it robust
 lr_scale_by_batch: true
 lr_schedule: cosine
+warmup_epochs: 10
+weight_decay: 1.0e-6
 # Expander (configurable size): canonical VICReg is 3 layers x 8192 (BN), output 8192.
 vicreg_expander_layers: 3
 vicreg_expander_dim: 8192

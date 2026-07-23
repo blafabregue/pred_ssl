@@ -26,7 +26,8 @@ from typing import Optional
 
 FRAMEWORKS = ["simclr", "moco", "byol", "looc", "vicreg"]
 EXPERIMENTS = ["baseline", "relpred", "relpred_lambda0", "relpred_decoupled", "relpred_proj3",
-               "relpred_split", "relpred_split_80_10_10", "relpred_split_45_45_10"]
+               "relpred_proj6", "relpred_split", "relpred_split_80_10_10",
+               "relpred_split_45_45_10"]
 
 # Canonical factor order (mirror of data/transforms.py FACTORS). The head emits one
 # logit per factor; this set is owned by the data layer and is not a tunable knob.
@@ -163,8 +164,11 @@ KNOBS = [
          doc="BatchNorm between layers of the custom projection head."),
 
     # ---- Optimizer & LR (train domain) ----
+    Knob("optimizer", "optim", "train", "enum", "sgd", valid=["sgd", "lars"],
+         coupling="vicreg uses lars (its unnormalized loss diverges under plain SGD)",
+         doc="Optimizer: sgd, or lars (bias/norm excluded from wd + trust-ratio adaptation)."),
     Knob("lr", "optim", "train", "float", 0.3, valid=(0.0, None), cli_flag="--lr",
-         coupling="overridden per framework: simclr/byol 0.3, moco/looc 0.03",
+         coupling="overridden per framework: simclr/byol 0.3, moco/looc 0.03, vicreg 0.2",
          doc="Base LR before batch scaling."),
     Knob("lr_scale_by_batch", "optim", "train", "bool", True,
          coupling="ON for simclr/byol, OFF for moco/looc",
@@ -175,6 +179,9 @@ KNOBS = [
     Knob("schedule", "optim", "train", "list_int", [300, 400],
          coupling="only used when lr_schedule == step",
          doc="Step-decay milestone epochs (x0.1 each)."),
+    Knob("warmup_epochs", "optim", "train", "int", 0, valid=(0, None),
+         coupling="set to 10 for vicreg; required for lars stability",
+         doc="Linear LR warmup over the first N epochs (0 = off)."),
     Knob("momentum", "optim", "train", "float", 0.9, valid=(0.0, 1.0),
          doc="SGD momentum (distinct from MoCo/LooC EMA momentum)."),
     Knob("weight_decay", "optim", "train", "float", 1.0e-4, valid=(0.0, None),

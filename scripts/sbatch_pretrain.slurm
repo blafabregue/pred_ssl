@@ -13,7 +13,10 @@
 # checkpoint. Built for a wall-clock-limited cluster: if the job is killed at the time
 # limit, just resubmit the SAME command — it continues where training stopped. Normally
 # submitted by scripts/slurm_submit.sh; the checkpoint bookkeeping lives here.
-set -e
+# pipefail: without it, `python ... | tee` reports tee's exit code (0), so a crashed
+# run would still print "pretrain finished" and look complete. With pipefail + set -e
+# a training crash aborts the job (non-zero), as it should.
+set -eo pipefail
 
 FRAMEWORK=${FRAMEWORK:-simclr}
 EXPERIMENT=${EXPERIMENT:-relpred}
@@ -34,6 +37,15 @@ if [ -f pred_ssl/scripts/env.sh ]; then
 elif command -v conda >/dev/null 2>&1; then
     source "$(conda info --base)/etc/profile.d/conda.sh"
     conda activate "${CONDA_ENV:-pytorch_2_0_0}" || echo "WARN: could not activate ${CONDA_ENV}"
+fi
+
+# Refuse to run on CPU: a node whose GPU faulted (e.g. ECC error) can leave CUDA
+# unavailable, and training would silently fall back to CPU at ~400s/iter — hours of
+# wasted wall-clock. Fail fast instead so the job can be requeued onto a healthy node.
+if ! python -c "import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)"; then
+    echo "ERROR: CUDA not available on this node — refusing to run on CPU. Requeue." \
+        | tee -a "${LOG}"
+    exit 1
 fi
 
 FINAL="${SAVE_DIR}/checkpoint_$(printf '%04d' "${EPOCHS}").pth.tar"

@@ -13,7 +13,9 @@
 # rotation, CUB-200 linear, Flowers-102 few-shot -> one <tag>.eval.log ending in the
 # EVAL_DONE marker that slurm_status.py / slurm_submit.sh look for. Submitted by
 # scripts/slurm_submit.sh once pretraining is complete.
-set -e
+# pipefail so a crashed eval step (its `python ... | tee`) aborts the job instead of
+# falling through to the EVAL_DONE marker and looking successful.
+set -eo pipefail
 
 TAG=${TAG:-simclr_relpred_resnet50_s1}
 ARCH=${ARCH:-resnet50}

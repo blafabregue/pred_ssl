@@ -36,6 +36,7 @@ from pred_ssl.losses import RelPairLoss, SplitDecovLoss  # noqa: E402
 from pred_ssl.models.frameworks import backbone_state_dict, build_model, encode_features  # noqa: E402
 from pred_ssl.models.rel_head import RelHead  # noqa: E402
 from pred_ssl.models.split import build_split  # noqa: E402
+from pred_ssl.optim import LARS, lars_param_groups  # noqa: E402
 
 CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "configs")
 
@@ -103,8 +104,15 @@ class AverageMeter:
 
 
 def adjust_learning_rate(optimizer, epoch, cfg, base_lr):
-    if cfg["lr_schedule"] == "cosine":
-        lr = base_lr * 0.5 * (1.0 + math.cos(math.pi * epoch / cfg["epochs"]))
+    warmup = cfg.get("warmup_epochs", 0)
+    if warmup and epoch < warmup:
+        # linear warmup to base_lr over the first `warmup` epochs (epoch-granular);
+        # essential for VICReg/LARS, which diverge if hit with the full LR at step 0.
+        lr = base_lr * (epoch + 1) / warmup
+    elif cfg["lr_schedule"] == "cosine":
+        # cosine annealing over the post-warmup span (identical to before when warmup=0)
+        t = (epoch - warmup) / max(1, cfg["epochs"] - warmup)
+        lr = base_lr * 0.5 * (1.0 + math.cos(math.pi * t))
     else:  # step
         lr = base_lr
         for milestone in cfg["schedule"]:
@@ -177,6 +185,13 @@ def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, c
                                + decov_criterion(split.vanilla_excl(f2), split.rel_excl(f2)))
                 loss = loss + decov_lambda * decov
                 decov_losses.update(decov.item(), v1.size(0))
+
+        if not torch.isfinite(loss):
+            raise SystemExit(
+                f"\n!! non-finite loss ({loss.item()}) at epoch {epoch + 1}, "
+                f"iter {i}/{len(loader)} — training stopped before it wastes the run. "
+                f"For VICReg/large-LR setups use optimizer=lars with warmup_epochs>0 "
+                f"and lower lr if it persists.")
 
         optimizer.zero_grad()
         loss.backward()
@@ -303,8 +318,15 @@ def main():
     params = list(model.parameters())
     if rel_head is not None:
         params += list(rel_head.parameters())
-    optimizer = torch.optim.SGD(params, base_lr, momentum=cfg["momentum"],
-                                weight_decay=cfg["weight_decay"])
+    opt_name = cfg.get("optimizer", "sgd").lower()
+    if opt_name == "lars":
+        optimizer = LARS(lars_param_groups(params, cfg["weight_decay"]),
+                         lr=base_lr, momentum=cfg["momentum"])
+    else:
+        optimizer = torch.optim.SGD(params, base_lr, momentum=cfg["momentum"],
+                                    weight_decay=cfg["weight_decay"])
+    print(f"=> optimizer: {opt_name}  (lr {base_lr:.5f}, wd {cfg['weight_decay']}, "
+          f"warmup {cfg.get('warmup_epochs', 0)} ep)", flush=True)
 
     start_epoch = 0
     best_metric = None
