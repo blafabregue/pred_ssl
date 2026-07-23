@@ -22,6 +22,18 @@ CUB=${CUB:-./pred_ssl/datasets/cub200_prepared}
 FLOWERS=${FLOWERS:-./pred_ssl/datasets/flowers102_prepared}
 EVAL_EPOCHS=${EVAL_EPOCHS:-200}
 
+# Clear runs that ended with a non-finite loss so they retrain instead of being skipped
+# as "already complete" (a diverged run still writes checkpoint_<epochs>). Restricted to
+# the frameworks in NAN_CLEAN_FRAMEWORKS — vicreg is the only one that has diverged, and
+# a narrow scope means a false positive can never destroy a healthy 500-epoch run.
+# Disable entirely with SKIP_NAN_CLEAN=1; widen with NAN_CLEAN_FRAMEWORKS="vicreg byol".
+NAN_CLEAN_FRAMEWORKS=${NAN_CLEAN_FRAMEWORKS:-vicreg}
+if [ "${SKIP_NAN_CLEAN:-0}" != "1" ]; then
+    python -m pred_ssl.scripts.clean_nan_runs --logs-dir ./pred_ssl/logs \
+        --checkpoints-dir ./pred_ssl/checkpoints \
+        --frameworks "${NAN_CLEAN_FRAMEWORKS}" --yes
+fi
+
 # names of jobs already queued/running, to avoid double-submitting
 QUEUED="$(squeue --me --noheader --format=%j 2>/dev/null || true)"
 is_queued() { printf '%s\n' "${QUEUED}" | grep -qx "$1"; }
