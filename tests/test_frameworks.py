@@ -190,6 +190,24 @@ def test_vicreg_expander_shape_and_loss():
     assert crit(z, z.clone()).item() == 0.0
 
 
+def test_offdiagonal_sq_sum_matches_reference():
+    # The memory-efficient covariance term must equal the readable reference exactly
+    # (sum(x^2) - sum(diag^2) == sum of squared off-diagonals), and stay differentiable.
+    from pred_ssl.losses import _off_diagonal, _off_diagonal_sq_sum
+    torch.manual_seed(0)
+    for n in (2, 5, 64):
+        x = torch.randn(n, n, dtype=torch.float64)
+        ref = _off_diagonal(x).pow(2).sum()
+        fast = _off_diagonal_sq_sum(x)
+        assert torch.allclose(ref, fast, rtol=1e-12, atol=1e-12), n
+    # gradients flow and match the reference too
+    a = torch.randn(16, 16, requires_grad=True)
+    b = a.detach().clone().requires_grad_(True)
+    _off_diagonal(a).pow(2).sum().backward()
+    _off_diagonal_sq_sum(b).backward()
+    assert torch.allclose(a.grad, b.grad, atol=1e-6)
+
+
 def test_byol_tau_schedule():
     model = build_model(_cfg("byol"))
     assert model._current_tau() == model.tau_base   # no total_steps -> fixed tau_base

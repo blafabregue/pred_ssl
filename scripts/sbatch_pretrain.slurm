@@ -39,6 +39,10 @@ elif command -v conda >/dev/null 2>&1; then
     conda activate "${CONDA_ENV:-pytorch_2_0_0}" || echo "WARN: could not activate ${CONDA_ENV}"
 fi
 
+# Reduce allocator fragmentation (VICReg's 8192-d expander + two ResNet-50 graphs run
+# close to the card's limit; the OOM message itself recommends this).
+export PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}
+
 # Refuse to run on CPU: a node whose GPU faulted (e.g. ECC error) can leave CUDA
 # unavailable, and training would silently fall back to CPU at ~400s/iter — hours of
 # wasted wall-clock. Fail fast instead so the job can be requeued onto a healthy node.

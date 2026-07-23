@@ -47,10 +47,27 @@ class BYOLLoss(nn.Module):
 
 
 def _off_diagonal(x):
-    """Flattened off-diagonal entries of a square matrix (VICReg covariance term)."""
+    """Flattened off-diagonal entries of a square matrix (reference implementation).
+
+    Kept as the readable definition of the covariance term and as the reference the
+    memory-efficient variant below is tested against; the loss itself uses that one.
+    """
     n, m = x.shape
     assert n == m
     return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
+
+
+def _off_diagonal_sq_sum(x):
+    """Sum of the SQUARED off-diagonal entries, without materializing a copy.
+
+    ``_off_diagonal(x).pow(2).sum()`` allocates a second (D^2 - D)-element tensor (the
+    trailing .flatten() copies a non-contiguous slice), and an in-place .pow_ on it
+    makes autograd retain yet another copy. At VICReg's D=8192 that is ~0.8 GB per view
+    — enough to OOM a 44 GB GPU when combined with two ResNet-50 forward graphs.
+    Since sum(x^2) = sum(diag^2) + sum(offdiag^2), subtracting the diagonal gives the
+    identical value with no retained copy.
+    """
+    return x.pow(2).sum() - x.diagonal().pow(2).sum()
 
 
 class VICRegLoss(nn.Module):
@@ -81,7 +98,7 @@ class VICRegLoss(nn.Module):
 
         cov_z1 = (z1.T @ z1) / (N - 1)
         cov_z2 = (z2.T @ z2) / (N - 1)
-        cov_loss = _off_diagonal(cov_z1).pow_(2).sum() / D + _off_diagonal(cov_z2).pow_(2).sum() / D
+        cov_loss = _off_diagonal_sq_sum(cov_z1) / D + _off_diagonal_sq_sum(cov_z2) / D
 
         return self.sim_coeff * repr_loss + self.std_coeff * std_loss + self.cov_coeff * cov_loss
 
