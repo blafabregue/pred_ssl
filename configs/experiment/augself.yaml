@@ -1,0 +1,12 @@
+# AugSelf baseline (Lee et al., NeurIPS 2021) — the closest prior method, run under
+# our exact protocol so the comparison against relpred is apples-to-apples.
+#
+# Faithful to the paper: STANDARD independent two-view augmentation (same distribution
+# as `baseline`, so the delta isolates the auxiliary loss), per-augmentation 3-layer
+# MLPs regressing omega1 - omega2 under an l2 loss, predicted set
+# A_AugSelf = {crop, color} (4 + 4 normalized parameters), and lambda = 0.5 — which is
+# the value the paper itself uses for ImageNet-100, and coincidentally ours too.
+# Their reported setup (IN-100, ResNet-50, 500 epochs, batch 256) matches ours exactly.
+augself: true
+rel_lambda: 0.5
+aug_sharing: false        # AugSelf does NOT share augmentation parameters across views

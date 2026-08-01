@@ -120,6 +120,23 @@ class SplitDecovLoss(nn.Module):
         return (c ** 2).mean()
 
 
+class AugSelfLoss(nn.Module):
+    """AugSelf auxiliary loss (Lee et al., 2021).
+
+    Regresses the DIFFERENCE of the two views' augmentation parameters,
+    ``omega_1 - omega_2``, under an l2 loss, from the concatenated representations
+    of both views. Following the paper's default predicted set
+    A_AugSelf = {crop, color}, omega is the 8-d vector produced by
+    data.transforms.AugSelfTransform (4 crop + 4 color, each normalized to [0, 1]).
+
+    Note the target is antisymmetric under view swap, which is why AugSelf's head
+    takes the ordered concatenation ``[h1, h2]`` rather than a symmetric combination.
+    """
+
+    def forward(self, pred, omega1, omega2):
+        return F.mse_loss(pred, omega1 - omega2)
+
+
 class RelPairLoss(nn.Module):
     """Per-factor BCE for the relational head.
 

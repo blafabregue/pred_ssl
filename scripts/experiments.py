@@ -32,6 +32,7 @@ import os
 # variant name -> (experiment config in configs/experiment/, one-line description)
 VARIANTS = {
     "baseline":      ("baseline",      "vanilla SSL, no relational head"),
+    "augself":       ("augself",       "AugSelf baseline (Lee et al. 2021), closest prior work"),
     "relpred":       ("relpred",       "vanilla + relational loss"),
     "relpred_proj3": ("relpred_proj3", "relpred + custom 3-layer projection head"),
     "relpred_proj6": ("relpred_proj6", "relpred + custom 6-layer projection head"),

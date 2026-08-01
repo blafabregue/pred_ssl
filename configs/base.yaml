@@ -43,6 +43,11 @@ feat_split: false
 split_ratios: [0.5, 0.25, 0.25]  # [vanilla, common, rel] fractions of feat_dim, sum = 1
 split_decov_lambda: 0.0          # >0 adds a cross-correlation penalty between the two EXCLUSIVE blocks
 
+# AugSelf baseline (experiment augself): standard augmentation + a head regressing the
+# two views' augmentation-parameter difference. Mutually exclusive with the relational
+# head; rel_lambda then weights the AugSelf loss.
+augself: false
+
 # Augmentation.
 aug_sharing: true              # true -> RelPairTransform; false -> StandardTwoViewTransform
 crop_scale: [0.2, 1.0]

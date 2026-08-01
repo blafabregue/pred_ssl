@@ -25,9 +25,9 @@ from typing import Optional
 
 
 FRAMEWORKS = ["simclr", "moco", "byol", "looc", "vicreg"]
-EXPERIMENTS = ["baseline", "relpred", "relpred_lambda0", "relpred_decoupled", "relpred_proj3",
-               "relpred_proj6", "relpred_split", "relpred_split_80_10_10",
-               "relpred_split_45_45_10"]
+EXPERIMENTS = ["baseline", "augself", "relpred", "relpred_lambda0", "relpred_decoupled",
+               "relpred_proj3", "relpred_proj6", "relpred_split",
+               "relpred_split_80_10_10", "relpred_split_45_45_10"]
 
 # Canonical factor order (mirror of data/transforms.py FACTORS). The head emits one
 # logit per factor; this set is owned by the data layer and is not a tunable knob.
@@ -219,6 +219,11 @@ KNOBS = [
          coupling="set by experiment relpred_decoupled; needs rel_lambda>0; +2 backbone forwards/step",
          doc="Decouple the head from the contrastive loss: a STANDARD independent SSL pair plus a "
              "SEPARATE per-factor shared/different pair that feeds only the head."),
+    Knob("augself", "rel", "train", "bool", False,
+         coupling="set by experiment augself; mutually exclusive with the relational head, "
+                  "rel_lambda then weights the AugSelf loss",
+         doc="AugSelf baseline (Lee et al. 2021): standard augmentation + per-augmentation "
+             "3-layer MLPs regressing the two views' parameter difference (crop, colour)."),
     Knob("feat_split", "rel", "train", "bool", False,
          coupling="set by experiment relpred_split; only meaningful with rel_lambda>0",
          doc="Partition h into [vanilla|common|rel] blocks: the SSL head sees vanilla+common, "

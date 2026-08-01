@@ -32,7 +32,8 @@ from pred_ssl.ckpt import AsyncCheckpointSaver, snapshot_to_cpu  # noqa: E402
 from pred_ssl.data.loader import build_pretrain_loader  # noqa: E402
 from pred_ssl.data.transforms import FACTORS  # noqa: E402
 from pred_ssl.eval.knn import build_knn_monitor  # noqa: E402
-from pred_ssl.losses import RelPairLoss, SplitDecovLoss  # noqa: E402
+from pred_ssl.losses import AugSelfLoss, RelPairLoss, SplitDecovLoss  # noqa: E402
+from pred_ssl.models.augself_head import AUGSELF_DIM, AUGSELF_GROUPS, AugSelfHead  # noqa: E402
 from pred_ssl.models.frameworks import backbone_state_dict, build_model, encode_features  # noqa: E402
 from pred_ssl.models.rel_head import RelHead  # noqa: E402
 from pred_ssl.models.split import build_split  # noqa: E402
@@ -129,7 +130,8 @@ def adjust_learning_rate(optimizer, epoch, cfg, base_lr):
 
 def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, cfg, epoch,
                     split=None, decov_criterion=None):
-    use_rel = rel_head is not None and cfg["rel_lambda"] > 0
+    augself = cfg.get("augself", False)
+    use_rel = rel_head is not None and cfg["rel_lambda"] > 0 and not augself
     decoupled = cfg.get("rel_decoupled", False)
     decov_lambda = cfg.get("split_decov_lambda", 0.0)
     use_decov = (decov_criterion is not None and split is not None and split.enabled
@@ -149,6 +151,7 @@ def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, c
         if decoupled:
             v1, v2, u1, u2, labels, mask = data
         else:
+            # augself: (v1, v2, omega1, omega2); otherwise (v1, v2, labels, mask)
             v1, v2, labels, mask = data
         v1 = v1.to(device, non_blocking=True)
         v2 = v2.to(device, non_blocking=True)
@@ -156,6 +159,14 @@ def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, c
         out = model(v1, v2)
         loss = out.ssl_loss
         pred_loss_val = 0.0
+
+        if augself and rel_head is not None:
+            # AugSelf baseline: regress omega1 - omega2 from the ordered [h1, h2].
+            omega1 = labels.to(device, non_blocking=True)
+            omega2 = mask.to(device, non_blocking=True)
+            aug_loss = rel_criterion(rel_head(out.h1, out.h2), omega1, omega2)
+            loss = loss + cfg["rel_lambda"] * aug_loss
+            pred_loss_val = aug_loss.item()
 
         if use_rel:
             labels = labels.to(device, non_blocking=True)
@@ -308,7 +319,14 @@ def main():
     rel_head = None
     rel_criterion = None
     decov_criterion = None
-    if cfg["rel_lambda"] > 0:
+    if cfg.get("augself", False) and cfg["rel_lambda"] > 0:
+        # AugSelf baseline (Lee et al., 2021): per-augmentation 3-layer MLPs
+        # regressing omega1 - omega2 from the ordered concatenation [h1, h2].
+        rel_head = AugSelfHead(split.rel_dim, hidden=cfg["rel_head_hidden"]).to(device)
+        rel_criterion = AugSelfLoss().to(device)
+        print(f"=> AugSelf head: groups {[g for g, _ in AUGSELF_GROUPS]}, "
+              f"{AUGSELF_DIM} params, lambda={cfg['rel_lambda']}", flush=True)
+    elif cfg["rel_lambda"] > 0:
         rel_head = RelHead(split.rel_dim, num_factors=len(FACTORS),
                            hidden=cfg["rel_head_hidden"]).to(device)
         rel_criterion = RelPairLoss().to(device)

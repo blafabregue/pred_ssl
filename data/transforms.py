@@ -409,6 +409,89 @@ class RelPairTransform:
         return v1, v2, torch.from_numpy(labels), torch.from_numpy(mask)
 
 
+class AugSelfTransform:
+    """Standard independent two-view augmentation + each view's augmentation parameters.
+
+    Faithful data side of AugSelf (Lee et al., 2021): the augmentation pipeline is the
+    STANDARD one (identical distribution to ``StandardTwoViewTransform``, so the
+    comparison against the baseline isolates the auxiliary loss), and what the transform
+    additionally returns is the parameter vector of each view, normalized to [0, 1] as
+    the paper specifies:
+
+      - crop  ``(y_center, x_center, h, w)`` divided by the original image size;
+      - color ``(brightness, contrast, saturation, hue)`` mapped from their sampling
+        ranges onto [0, 1].
+
+    The head then regresses ``omega_1 - omega_2`` under an l2 loss. Grayscale and blur
+    are still applied (as in the reference pipeline) but not predicted: the paper's
+    default predicted set is A_AugSelf = {crop, color}.
+
+    Returns ``(view1, view2, omega1[8], omega2[8])``.
+    """
+
+    N_PARAMS = 8   # 4 crop + 4 color
+
+    def __init__(self, color_strength=1.0, crop_scale=(0.2, 1.0), out_size=224,
+                 p=None, mean=MEAN, std=STD):
+        self.color_strength = color_strength
+        self.crop_scale = tuple(crop_scale)
+        self.out_size = out_size
+        self.p = p if p is not None else dict(DEFAULT_P)
+        self.mean = mean
+        self.std = std
+
+    def _sample_view(self, img, rng):
+        """Independent parameters for one view (standard pipeline, no sharing)."""
+        s = self.color_strength
+        cj_lo, cj_hi = 1.0 - 0.4 * s, 1.0 + 0.4 * s
+        hue_lim = 0.1 * s
+        params = {
+            "rotation": 0,
+            "hflip": rng.random() < self.p["hflip"],
+            "brightness": rng.uniform(cj_lo, cj_hi),
+            "contrast": rng.uniform(cj_lo, cj_hi),
+            "saturation": rng.uniform(cj_lo, cj_hi),
+            "hue": rng.uniform(-hue_lim, hue_lim),
+            "grayscale": rng.random() < self.p["grayscale"],
+            "blur": rng.uniform(*SIGMA_RANGE) if rng.random() < self.p["blur"] else 0.0,
+        }
+        params["crop"] = _sample_crop_from_size(img.size[0], img.size[1],
+                                                self.crop_scale,
+                                                (3.0 / 4.0, 4.0 / 3.0), rng)
+        return params
+
+    def _omega(self, params, img_size):
+        """Normalized parameter vector omega in [0, 1]^8 (crop then color)."""
+        width, height = img_size
+        i, j, h, w = params["crop"]
+        s = self.color_strength
+        cj_lo, cj_hi = 1.0 - 0.4 * s, 1.0 + 0.4 * s
+        hue_lim = 0.1 * s
+        rng_cj = cj_hi - cj_lo
+        return np.array([
+            (i + h / 2.0) / height,          # y_center
+            (j + w / 2.0) / width,           # x_center
+            h / height,                      # height
+            w / width,                       # width
+            (params["brightness"] - cj_lo) / rng_cj,
+            (params["contrast"] - cj_lo) / rng_cj,
+            (params["saturation"] - cj_lo) / rng_cj,
+            (params["hue"] + hue_lim) / (2 * hue_lim),
+        ], dtype=np.float32)
+
+    def __call__(self, img):
+        img = img.convert("RGB")
+        rng = random
+        p1, p2 = self._sample_view(img, rng), self._sample_view(img, rng)
+        v1 = apply_pipeline(img, p1, scale=self.crop_scale, out_size=self.out_size,
+                            mean=self.mean, std=self.std)
+        v2 = apply_pipeline(img, p2, scale=self.crop_scale, out_size=self.out_size,
+                            mean=self.mean, std=self.std)
+        return (v1, v2,
+                torch.from_numpy(self._omega(p1, img.size)),
+                torch.from_numpy(self._omega(p2, img.size)))
+
+
 class StandardTwoViewTransform:
     """Standard independent two-view augmentation (the existing baseline pipeline).
 
@@ -468,6 +551,11 @@ class DecoupledRelTransform:
 
 def build_transform(cfg):
     """Select the pretraining transform from a config dict."""
+    if cfg.get("augself", False):
+        return AugSelfTransform(
+            color_strength=cfg.get("color_strength", 1.0),
+            crop_scale=cfg.get("crop_scale", (0.2, 1.0)),
+        )
     if cfg.get("rel_decoupled", False):
         return DecoupledRelTransform(
             StandardTwoViewTransform(
