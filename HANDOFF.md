@@ -420,6 +420,13 @@ Launch a **single** experiment directly if you prefer:
   run when CUDA is unavailable (a faulted GPU node would otherwise train on CPU at
   ~400s/iter), and both SLURM scripts use `set -eo pipefail` so a crashed `python | tee`
   aborts the job instead of printing the completion marker.
+- **CUDA OOM on 40 GB cards.** ResNet-50 at batch 256 sits close to the limit of a
+  40 GB GPU for the heaviest configurations — BYOL keeps two full forward graphs plus
+  a target network, and AugSelf adds one 3-layer MLP *per augmentation group* (25.2M
+  params, twice our relational head's 12.6M, per Lee et al.'s design). Those jobs OOM
+  on `gpua100` (40 GB) but fit on the 48 GB+ cards. Narrow the constraint per
+  submission rather than shrinking the model:
+  `GPU_CONSTRAINT="gpuh100|gpuh200|gpua40|gpul40s" VARIANTS=augself bash pred_ssl/scripts/slurm_submit.sh`.
 - **VICReg expander width / `D/N`.** VICReg's covariance term estimates a `DxD` matrix
   from `batch_size` samples, so the ratio `vicreg_proj_dim / batch_size` matters: the
   paper runs `8192/2048 = 4`. Keeping the canonical 8192 at our batch 256 gives 32,

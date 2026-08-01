@@ -22,6 +22,15 @@ CUB=${CUB:-./pred_ssl/datasets/cub200_prepared}
 FLOWERS=${FLOWERS:-./pred_ssl/datasets/flowers102_prepared}
 EVAL_EPOCHS=${EVAL_EPOCHS:-200}
 
+# Optional GPU-memory floor. ResNet-50 at batch 256 sits close to the limit of a 40 GB
+# card for the heaviest configurations (BYOL keeps two full forward graphs plus a target
+# network; AugSelf adds one 3-layer MLP per augmentation group). Those jobs OOM on
+# gpua100 (40 GB) but are comfortable on the 48 GB+ cards, so the constraint can be
+# narrowed per submission without editing the sbatch files:
+#   GPU_CONSTRAINT="gpuh100|gpuh200|gpua40|gpul40s" VARIANTS=augself bash ... slurm_submit.sh
+SBATCH_EXTRA=""
+[ -n "${GPU_CONSTRAINT:-}" ] && SBATCH_EXTRA="--constraint=${GPU_CONSTRAINT}"
+
 # Clear runs that ended with a non-finite loss so they retrain instead of being skipped
 # as "already complete" (a diverged run still writes checkpoint_<epochs>). Restricted to
 # the frameworks in NAN_CLEAN_FRAMEWORKS — vicreg is the only one that has diverged, and
@@ -45,7 +54,7 @@ while IFS=$'\t' read -r tag framework experiment arch seed epochs save_dir log; 
 
     if [ ! -f "${final}" ]; then                       # pretrain not finished
         if is_queued "pre_${tag}"; then echo "queued   pre_${tag}"; n_skip=$((n_skip+1)); continue; fi
-        jid=$(sbatch --parsable --job-name="pre_${tag}" \
+        jid=$(sbatch --parsable --job-name="pre_${tag}" ${SBATCH_EXTRA} \
             --export=ALL,FRAMEWORK=${framework},EXPERIMENT=${experiment},ARCH=${arch},SEED=${seed},EPOCHS=${epochs},SAVE_DIR=${save_dir},LOG=${log},IN100=${IN100} \
             pred_ssl/scripts/sbatch_pretrain.slurm)
         echo "submit   pre_${tag}  -> ${jid}"; n_pre=$((n_pre+1)); continue
@@ -53,7 +62,7 @@ while IFS=$'\t' read -r tag framework experiment arch seed epochs save_dir log; 
 
     if grep -q "EVAL_DONE" "${eval_log}" 2>/dev/null; then echo "done     ${tag}"; n_skip=$((n_skip+1)); continue; fi
     if is_queued "eval_${tag}"; then echo "queued   eval_${tag}"; n_skip=$((n_skip+1)); continue; fi
-    jid=$(sbatch --parsable --job-name="eval_${tag}" \
+    jid=$(sbatch --parsable --job-name="eval_${tag}" ${SBATCH_EXTRA} \
         --export=ALL,TAG=${tag},ARCH=${arch},EPOCHS=${epochs},SAVE_DIR=${save_dir},EVAL_LOG=${eval_log},IN100=${IN100},CUB=${CUB},FLOWERS=${FLOWERS},EVAL_EPOCHS=${EVAL_EPOCHS} \
         pred_ssl/scripts/sbatch_eval.slurm)
     echo "submit   eval_${tag}  -> ${jid}"; n_eval=$((n_eval+1))
