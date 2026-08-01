@@ -31,16 +31,18 @@ EVAL_EPOCHS=${EVAL_EPOCHS:-200}
 SBATCH_EXTRA=""
 [ -n "${GPU_CONSTRAINT:-}" ] && SBATCH_EXTRA="--constraint=${GPU_CONSTRAINT}"
 
-# Clear runs that ended with a non-finite loss so they retrain instead of being skipped
-# as "already complete" (a diverged run still writes checkpoint_<epochs>). Restricted to
-# the frameworks in NAN_CLEAN_FRAMEWORKS — vicreg is the only one that has diverged, and
-# a narrow scope means a false positive can never destroy a healthy 500-epoch run.
-# Disable entirely with SKIP_NAN_CLEAN=1; widen with NAN_CLEAN_FRAMEWORKS="vicreg byol".
-NAN_CLEAN_FRAMEWORKS=${NAN_CLEAN_FRAMEWORKS:-vicreg}
-if [ "${SKIP_NAN_CLEAN:-0}" != "1" ]; then
-    python -m pred_ssl.scripts.clean_nan_runs --logs-dir ./pred_ssl/logs \
+# Clear runs that cannot make progress, so they retrain instead of being skipped as
+# "already complete" (diverged: a NaN run still writes checkpoint_<epochs>) or being
+# resubmitted into the same wall (crashed with nothing to resume from, e.g. CUDA OOM).
+# The cleaner never touches a queued/running job and never removes a run that has a
+# checkpoint, so a healthy 500-epoch run can never be lost.
+# Scope defaults to ALL frameworks now that crash detection is checkpoint-guarded;
+# narrow it with CLEAN_FRAMEWORKS="vicreg", disable with SKIP_CLEAN=1.
+CLEAN_FRAMEWORKS=${CLEAN_FRAMEWORKS:-${NAN_CLEAN_FRAMEWORKS:-}}
+if [ "${SKIP_CLEAN:-${SKIP_NAN_CLEAN:-0}}" != "1" ]; then
+    python -m pred_ssl.scripts.clean_failed_runs --logs-dir ./pred_ssl/logs \
         --checkpoints-dir ./pred_ssl/checkpoints \
-        --frameworks "${NAN_CLEAN_FRAMEWORKS}" --yes
+        --frameworks "${CLEAN_FRAMEWORKS}" --yes
 fi
 
 # names of jobs already queued/running, to avoid double-submitting

@@ -14,11 +14,13 @@ box, and you can narrow it without editing code):
     ARCH         resnet18 | resnet50 (default: resnet50)
     EPOCHS       pretraining epochs (default: 500)
 
-The default variants (per the study design):
-    baseline       vanilla SSL, no relational head            (experiment: baseline)
-    relpred        vanilla + the new relational loss          (experiment: relpred)
-    relpred_proj3  relpred + the new 3-layer projection head  (experiment: relpred_proj3)
-    relpred_proj6  relpred + a 6-layer projection head        (experiment: relpred_proj6)
+The default variants (everything the paper reports):
+    baseline         vanilla SSL, no auxiliary head
+    augself          AugSelf (Lee et al. 2021) -- the closest prior work
+    relpred_lambda0  sharing loader, head off -- view-distribution control
+    relpred          vanilla + the relational loss
+    relpred_proj3    relpred + a 3-layer projection head (recommended)
+    relpred_proj6    relpred + a 6-layer projection head
 Opt-in (latent-split / disentanglement study, add via VARIANTS="... relpred_split"):
     relpred_split, relpred_split_80_10_10, relpred_split_45_45_10
 
@@ -51,8 +53,17 @@ VARIANTS = {
                                "relpred + latent split 0.45/0.45/0.10 (common-heavy)"),
 }
 
-# Default matrix. Narrow/extend with VARIANTS="baseline relpred" (etc.).
-DEFAULT_VARIANTS = ["baseline", "relpred", "relpred_proj3", "relpred_proj6"]
+# Default matrix: everything the paper reports, so `slurm_status` shows the true
+# picture without needing VARIANTS=... to be remembered. Narrow it with
+# VARIANTS="baseline relpred" when submitting a subset.
+DEFAULT_VARIANTS = [
+    "baseline",          # unmodified framework
+    "augself",           # closest prior work (Lee et al., 2021)
+    "relpred_lambda0",   # view-distribution control for the mechanism claim
+    "relpred",           # the method
+    "relpred_proj3",     # + 3-layer projector (the recommended operating point)
+    "relpred_proj6",     # + 6-layer projector (depth is non-monotone)
+]
 
 DEFAULT_FRAMEWORKS = ["simclr", "moco", "byol", "looc", "vicreg"]
 DEFAULT_SEEDS = ["1", "2", "3", "4", "5"]

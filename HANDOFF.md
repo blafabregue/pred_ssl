@@ -410,10 +410,10 @@ Launch a **single** experiment directly if you prefer:
   use `optimizer=lars` with `warmup_epochs>0` and/or lower `lr`. The garbage checkpoints
   of a diverged run must go before re-running, or `sbatch_pretrain.slurm` sees
   `checkpoint_0500` and skips it as "already complete" — `slurm_submit.sh` now does this
-  automatically at startup for **vicreg only** (`scripts/clean_nan_runs.py`). Widen with
-  `NAN_CLEAN_FRAMEWORKS="vicreg byol"`, disable with `SKIP_NAN_CLEAN=1`, or inspect by
+  automatically at startup (`scripts/clean_failed_runs.py`). Narrow with
+  `CLEAN_FRAMEWORKS="vicreg"`, disable with `SKIP_CLEAN=1`, or inspect by
   hand (dry run by default):
-  `python -m pred_ssl.scripts.clean_nan_runs --frameworks vicreg`.
+  `python -m pred_ssl.scripts.clean_failed_runs` (dry run by default).
   The verdict uses the LAST loss in the log, so a healthy re-run appended after a
   diverged attempt is never deleted.
 - **Silent CPU fallback / false "finished".** `sbatch_pretrain.slurm` now refuses to
