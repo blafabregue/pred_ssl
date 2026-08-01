@@ -35,6 +35,10 @@ VARIANTS = {
     "relpred":       ("relpred",       "vanilla + relational loss"),
     "relpred_proj3": ("relpred_proj3", "relpred + custom 3-layer projection head"),
     "relpred_proj6": ("relpred_proj6", "relpred + custom 6-layer projection head"),
+    # THE control for the paper's mechanism claim: same shared/different augmentation
+    # distribution as relpred (rotation included), relational head OFF. Any gain it
+    # already shows is due to the view distribution, not to the auxiliary loss.
+    "relpred_lambda0": ("relpred_lambda0", "sharing loader, head off (view-distribution control)"),
     # Latent-split (disentanglement) variants: kept runnable but OUT of the default
     # matrix — across frameworks they matched or slightly trailed plain relpred, and the
     # three ratio settings were indistinguishable. Run them explicitly with
