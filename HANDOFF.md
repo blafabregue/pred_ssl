@@ -423,11 +423,13 @@ Launch a **single** experiment directly if you prefer:
 - **VICReg expander width / `D/N`.** VICReg's covariance term estimates a `DxD` matrix
   from `batch_size` samples, so the ratio `vicreg_proj_dim / batch_size` matters: the
   paper runs `8192/2048 = 4`. Keeping the canonical 8192 at our batch 256 gives 32,
-  where the term is mostly estimation noise (measured 32.1 per view of pure noise vs
-  4.0 at the official ratio, ~60% of the loss at init) — VICReg then plateaus ~9 points
-  below SimCLR. We use `1024` (ratio 4, expander 4.2M params like the other
-  frameworks, and no OOM). If you change `batch_size`, rescale `vicreg_proj_dim` with
-  it; `tests/test_optim.py` guards the ratio.
+  where the term is mostly estimation noise (~60% of the loss at init) — VICReg then
+  plateaus ~9 points below SimCLR. **The covariance term sees only the OUTPUT dim**, so
+  hidden width and output dim are independent: we use `expander_dim=2048`,
+  `proj_dim=1024` → ratio 4 (noise at the official level) with a 10.5M expander, on par
+  with BYOL (11.5M). If you change `batch_size`, rescale `vicreg_proj_dim` with it
+  (`tests/test_optim.py` guards the ratio); `vicreg_expander_dim` is free to grow and
+  only costs memory.
 
 ---
 

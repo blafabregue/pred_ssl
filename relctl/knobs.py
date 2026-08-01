@@ -136,9 +136,9 @@ KNOBS = [
          doc="LooC full multiview (v1 supports false only)."),
     Knob("vicreg_expander_layers", "model", "train", "int", 3, valid=(1, None), fw_scope="vicreg",
          doc="Number of Linear layers in the VICReg expander (canonical: 3)."),
-    Knob("vicreg_expander_dim", "model", "train", "int", 1024, valid=(1, None), fw_scope="vicreg",
-         coupling="keep proj_dim/batch_size ~ 4 (the official 8192/2048 ratio)",
-         doc="Hidden width of the VICReg expander (paper: 8192 at batch 2048; 1024 here)."),
+    Knob("vicreg_expander_dim", "model", "train", "int", 2048, valid=(1, None), fw_scope="vicreg",
+         coupling="free to grow (only costs memory) -- the covariance term sees proj_dim only",
+         doc="Hidden width of the VICReg expander (paper: 8192 at batch 2048; 2048 here)."),
     Knob("vicreg_proj_dim", "model", "train", "int", 1024, valid=(1, None), fw_scope="vicreg",
          coupling="the covariance term estimates a DxD matrix from batch_size samples: "
                   "D/batch_size >> 4 makes it estimation noise",
