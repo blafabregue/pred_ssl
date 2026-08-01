@@ -420,8 +420,14 @@ Launch a **single** experiment directly if you prefer:
   run when CUDA is unavailable (a faulted GPU node would otherwise train on CPU at
   ~400s/iter), and both SLURM scripts use `set -eo pipefail` so a crashed `python | tee`
   aborts the job instead of printing the completion marker.
-- **VICReg CUDA OOM.** The 8192-d expander is memory-heavy; if a run OOMs on a shared
-  GPU, lower `vicreg_expander_dim` (relctl) or `batch_size`.
+- **VICReg expander width / `D/N`.** VICReg's covariance term estimates a `DxD` matrix
+  from `batch_size` samples, so the ratio `vicreg_proj_dim / batch_size` matters: the
+  paper runs `8192/2048 = 4`. Keeping the canonical 8192 at our batch 256 gives 32,
+  where the term is mostly estimation noise (measured 32.1 per view of pure noise vs
+  4.0 at the official ratio, ~60% of the loss at init) — VICReg then plateaus ~9 points
+  below SimCLR. We use `1024` (ratio 4, expander 4.2M params like the other
+  frameworks, and no OOM). If you change `batch_size`, rescale `vicreg_proj_dim` with
+  it; `tests/test_optim.py` guards the ratio.
 
 ---
 

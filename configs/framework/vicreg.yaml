@@ -8,10 +8,16 @@ lr_scale_by_batch: true
 lr_schedule: cosine
 warmup_epochs: 10
 weight_decay: 1.0e-6
-# Expander (configurable size): canonical VICReg is 3 layers x 8192 (BN), output 8192.
+# Expander. The canonical recipe is 3 layers x 8192 (output 8192), but that is tuned
+# for batch 2048. VICReg's covariance term estimates a DxD matrix from N samples, so
+# what matters is the ratio D/N: the paper runs 8192/2048 = 4, whereas 8192/256 = 32
+# leaves the term dominated by estimation noise (measured: 32.1 per view of pure noise
+# at D=8192/N=256, vs 4.0 at the official ratio -- about 60% of the loss at init).
+# D=1024 restores D/N = 4 at our batch size, removes the OOM headroom problem, and
+# brings the expander to ~4.2M params, comparable to the other frameworks' projectors.
 vicreg_expander_layers: 3
-vicreg_expander_dim: 8192
-vicreg_proj_dim: 8192
+vicreg_expander_dim: 1024
+vicreg_proj_dim: 1024
 # Loss term weights (paper defaults).
 vicreg_sim_coeff: 25.0
 vicreg_std_coeff: 25.0

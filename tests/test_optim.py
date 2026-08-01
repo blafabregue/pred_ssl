@@ -118,6 +118,24 @@ def test_vicreg_uses_lars_warmup_and_small_wd():
     assert _resolve("simclr", "relpred")["optimizer"] == "sgd"
 
 
+def test_vicreg_expander_dim_keeps_covariance_estimable():
+    # VICReg's covariance term estimates a DxD matrix from batch_size samples; the
+    # official recipe runs D/N = 8192/2048 = 4. A much larger ratio leaves the term
+    # dominated by estimation noise (that is what made our first VICReg runs plateau
+    # ~9 points below SimCLR). Guard the ratio rather than the raw dimension.
+    cfg = _resolve("vicreg", "relpred")
+    ratio = cfg["vicreg_proj_dim"] / cfg["batch_size"]
+    assert ratio <= 8, (
+        f"D/N = {cfg['vicreg_proj_dim']}/{cfg['batch_size']} = {ratio}; the covariance "
+        "term becomes mostly sampling noise. Lower vicreg_proj_dim or raise batch_size.")
+    # expander stays in the same league as the other frameworks' projectors (~4-9M)
+    from pred_ssl.models.frameworks.vicreg import _build_expander
+    exp = _build_expander(2048, cfg["vicreg_expander_dim"], cfg["vicreg_proj_dim"],
+                          cfg["vicreg_expander_layers"])
+    n = sum(p.numel() for p in exp.parameters())
+    assert n < 20e6, f"expander has {n/1e6:.1f}M params, far out of line with the others"
+
+
 if __name__ == "__main__":
     import pytest
     raise SystemExit(pytest.main([__file__, "-q"]))
