@@ -7,7 +7,7 @@
 #SBATCH --time=24:00:00                  # cluster wall-clock cap (resume across jobs)
 #SBATCH --output=pred_ssl/logs/%x_%j.out
 #SBATCH --error=pred_ssl/logs/%x_%j.err
-#SBATCH --constraint="gpuh100|gpua100|gpuh200|gpua40|gpul40s"
+#SBATCH --constraint="gpuh100|gpua100|gpuh200"
 #
 # Pretrain ONE experiment (framework/experiment/seed), AUTO-RESUMING from its last
 # checkpoint. Built for a wall-clock-limited cluster: if the job is killed at the time
