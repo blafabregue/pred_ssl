@@ -1,0 +1,22 @@
+framework: barlow
+# Barlow Twins (Zbontar et al., 2021). Configured to be VICReg's twin so that the
+# only difference between the two is the loss itself: same projector geometry, same
+# LARS + warmup recipe, same weight decay. That symmetry is what makes Barlow Twins a
+# test of the paper's hypothesis that redundancy-reduction objectives are structurally
+# opposed to the relational signal -- if the hypothesis holds, it should reproduce
+# VICReg's rotation anomaly.
+#
+# Like VICReg, the loss estimates a DxD matrix (here the cross-correlation) from
+# batch_size samples, so the ratio barlow_proj_dim / batch_size matters: the paper
+# runs 8192/2048 = 4, and 1024/256 reproduces that ratio at our batch size. The hidden
+# width is independent of the ratio and only costs memory.
+optimizer: lars
+lr: 0.2
+lr_scale_by_batch: true
+lr_schedule: cosine
+warmup_epochs: 10
+weight_decay: 1.0e-6
+barlow_expander_layers: 3
+barlow_expander_dim: 2048
+barlow_proj_dim: 1024
+barlow_lambd: 0.0051      # the paper's off-diagonal weight

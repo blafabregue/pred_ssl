@@ -231,7 +231,7 @@ def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, c
 def main():
     parser = argparse.ArgumentParser(description="pred_ssl unified pretraining")
     parser.add_argument("--framework", required=True,
-                        choices=["simclr", "moco", "byol", "looc", "vicreg"])
+                        choices=["simclr", "moco", "byol", "looc", "vicreg", "barlow"])
     parser.add_argument("--experiment", default="relpred",
                         help="config in configs/experiment/ (baseline|relpred|"
                              "relpred_lambda0|relpred_decoupled|relpred_proj3|relpred_split|"

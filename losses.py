@@ -120,6 +120,36 @@ class SplitDecovLoss(nn.Module):
         return (c ** 2).mean()
 
 
+class BarlowTwinsLoss(nn.Module):
+    """Barlow Twins loss (Zbontar et al., 2021).
+
+    Copied faithfully from facebookresearch/barlowtwins: each embedding is
+    standardized along the batch dimension (a BatchNorm1d with affine=False), the
+    empirical cross-correlation matrix C = bn(z1)^T bn(z2) / N is formed, and the
+    loss pushes its diagonal to 1 (invariance) and its off-diagonal to 0
+    (redundancy reduction):
+
+        L = sum_i (1 - C_ii)^2  +  lambd * sum_{i != j} C_ij^2
+
+    Like VICReg, this estimates a DxD matrix from N samples, so the ratio D/N
+    governs how much of the off-diagonal term is estimation noise rather than
+    signal; see the note on expander width in the paper's appendix. The
+    off-diagonal sum reuses the copy-free identity of ``_off_diagonal_sq_sum``.
+    """
+
+    def __init__(self, dim, lambd=0.0051):
+        super().__init__()
+        self.lambd = lambd
+        self.bn = nn.BatchNorm1d(dim, affine=False)
+
+    def forward(self, z1, z2):
+        N = z1.size(0)
+        c = (self.bn(z1).T @ self.bn(z2)) / N
+        on_diag = (torch.diagonal(c) - 1).pow(2).sum()
+        off_diag = _off_diagonal_sq_sum(c)
+        return on_diag + self.lambd * off_diag
+
+
 class AugSelfLoss(nn.Module):
     """AugSelf auxiliary loss (Lee et al., 2021).
 

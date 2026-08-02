@@ -18,6 +18,7 @@ TRAINABLE_BACKBONE_ATTR = {
     "byol": "online_backbone",
     "looc": "backbone_q",
     "vicreg": "backbone",
+    "barlow": "backbone",
 }
 
 
@@ -38,6 +39,9 @@ def build_model(cfg):
     if fw == "vicreg":
         from .vicreg import VICRegModel
         return VICRegModel(cfg)
+    if fw == "barlow":
+        from .barlow import BarlowTwinsModel
+        return BarlowTwinsModel(cfg)
     raise ValueError(f"unknown framework: {fw}")
 
 

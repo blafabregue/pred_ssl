@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 
-FRAMEWORKS = ["simclr", "moco", "byol", "looc", "vicreg"]
+FRAMEWORKS = ["simclr", "moco", "byol", "looc", "vicreg", "barlow"]
 EXPERIMENTS = ["baseline", "augself", "relpred", "relpred_lambda0", "relpred_decoupled",
                "relpred_proj3", "relpred_proj6", "relpred_split",
                "relpred_split_80_10_10", "relpred_split_45_45_10"]
@@ -143,6 +143,17 @@ KNOBS = [
          coupling="the covariance term estimates a DxD matrix from batch_size samples: "
                   "D/batch_size >> 4 makes it estimation noise",
          doc="VICReg expander output dim (paper: 8192 at batch 2048; 1024 at batch 256)."),
+    Knob("barlow_expander_layers", "model", "train", "int", 3, valid=(1, None), fw_scope="barlow",
+         doc="Number of Linear layers in the Barlow Twins projector (canonical: 3)."),
+    Knob("barlow_expander_dim", "model", "train", "int", 2048, valid=(1, None), fw_scope="barlow",
+         coupling="free to grow (only costs memory) -- the cross-correlation sees proj_dim only",
+         doc="Hidden width of the Barlow Twins projector (paper: 8192 at batch 2048)."),
+    Knob("barlow_proj_dim", "model", "train", "int", 1024, valid=(1, None), fw_scope="barlow",
+         coupling="the loss estimates a DxD cross-correlation from batch_size samples: "
+                  "keep proj_dim/batch_size ~ 4 (the official 8192/2048 ratio)",
+         doc="Barlow Twins projector output dim (paper: 8192 at batch 2048; 1024 at batch 256)."),
+    Knob("barlow_lambd", "model", "train", "float", 0.0051, valid=(0.0, None), fw_scope="barlow",
+         doc="Weight of the off-diagonal (redundancy-reduction) term; the paper's 0.0051."),
     Knob("vicreg_sim_coeff", "model", "train", "float", 25.0, valid=(0.0, None), fw_scope="vicreg",
          doc="VICReg invariance (MSE) term weight."),
     Knob("vicreg_std_coeff", "model", "train", "float", 25.0, valid=(0.0, None), fw_scope="vicreg",
@@ -319,6 +330,8 @@ FRAMEWORK_KNOBS = {
     "looc": ["dim", "K", "m", "T", "n_aug", "full_multiview"],
     "vicreg": ["vicreg_expander_layers", "vicreg_expander_dim", "vicreg_proj_dim",
                "vicreg_sim_coeff", "vicreg_std_coeff", "vicreg_cov_coeff"],
+    "barlow": ["barlow_expander_layers", "barlow_expander_dim", "barlow_proj_dim",
+               "barlow_lambd"],
 }
 
 
