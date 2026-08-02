@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pred_ssl.ckpt import AsyncCheckpointSaver, snapshot_to_cpu  # noqa: E402
 from pred_ssl.data.loader import build_pretrain_loader  # noqa: E402
-from pred_ssl.data.transforms import FACTORS, ESSLTransform  # noqa: E402
+from pred_ssl.data.transforms import FACTORS, essl_num_classes  # noqa: E402
 from pred_ssl.models.essl_head import ESSLHead  # noqa: E402
 from pred_ssl.eval.knn import build_knn_monitor  # noqa: E402
 from pred_ssl.losses import AugSelfLoss, RelPairLoss, SplitDecovLoss  # noqa: E402
@@ -175,18 +175,22 @@ def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, c
         pred_loss_val = 0.0
 
         if essl and rel_head is not None:
-            # E-SSL: classify the transformation applied to a SEPARATE small crop,
+            # E-SSL: classify the transformation(s) applied to a SEPARATE small crop,
             # which costs one extra forward through the trainable backbone.
             pred_view = labels.to(device, non_blocking=True)
-            tclass = mask.to(device, non_blocking=True)
+            tclass = mask.to(device, non_blocking=True)      # (N, n_factors)
+            if tclass.dim() == 1:
+                tclass = tclass.unsqueeze(1)
             h_pred = encode_features(model, cfg["framework"], pred_view)
-            logits = rel_head(h_pred)
-            aug_loss = rel_criterion(logits, tclass)
+            logit_groups = rel_head(h_pred)
+            aug_loss = sum(rel_criterion(lg, tclass[:, f])
+                           for f, lg in enumerate(logit_groups)) / len(logit_groups)
             loss = loss + cfg["rel_lambda"] * aug_loss
             pred_loss_val = aug_loss.item()
             with torch.no_grad():
-                acc = (logits.argmax(dim=1) == tclass).float().mean().item() * 100.0
-                factor_meters[0].update(acc, v1.size(0))
+                for f, lg in enumerate(logit_groups):
+                    acc = (lg.argmax(dim=1) == tclass[:, f]).float().mean().item() * 100.0
+                    factor_meters[f].update(acc, v1.size(0))
 
         if augself and rel_head is not None:
             # AugSelf baseline: regress omega1 - omega2 from the ordered [h1, h2].
@@ -350,12 +354,14 @@ def main():
     rel_criterion = None
     decov_criterion = None
     if cfg.get("essl", False) and cfg["rel_lambda"] > 0:
-        # E-SSL baseline: a multi-layer head classifying the transformation applied
+        # E-SSL baseline: a multi-layer head classifying the transformation(s) applied
         # to a separate small crop (the paper's safeguards, kept).
-        rel_head = ESSLHead(split.rel_dim, num_classes=ESSLTransform.N_ROT,
+        essl_factors = tuple(cfg.get("essl_factors", ("rotation",)))
+        n_classes = [essl_num_classes(f, cfg.get("essl_bins", 4)) for f in essl_factors]
+        rel_head = ESSLHead(split.rel_dim, num_classes=n_classes,
                             hidden=cfg["rel_head_hidden"]).to(device)
         rel_criterion = torch.nn.CrossEntropyLoss().to(device)
-        print(f"=> E-SSL head: {ESSLTransform.N_ROT}-way rotation on a "
+        print(f"=> E-SSL head: {list(zip(essl_factors, n_classes))} on a "
               f"{cfg.get('essl_crop_size', 112)}px predictor crop, "
               f"lambda={cfg['rel_lambda']}", flush=True)
     elif cfg.get("augself", False) and cfg["rel_lambda"] > 0:

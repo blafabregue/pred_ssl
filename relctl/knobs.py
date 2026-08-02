@@ -252,6 +252,14 @@ KNOBS = [
          coupling="used only when essl=ON; the small crop is E-SSL's shortcut guard",
          doc="Side, in pixels, of E-SSL's separate predictor crop (paper ratio: half the "
              "contrastive view)."),
+    Knob("essl_factors", "rel", "train", "list_str", ["rotation"],
+         coupling="one factor = E-SSL as published; more = our extended_essl variant",
+         doc="Factors the per-view head classifies. The crop is not available: its "
+             "parameters are not identifiable from the cropped view alone."),
+    Knob("essl_bins", "rel", "train", "int", 4, valid=(2, None),
+         coupling="used only for continuous factors under essl",
+         doc="Bins used to discretize continuous factors for E-SSL's per-view target "
+             "(their 'four-fold blur' uses 4)."),
     Knob("feat_split", "rel", "train", "bool", False,
          coupling="set by experiment relpred_split; only meaningful with rel_lambda>0",
          doc="Partition h into [vanilla|common|rel] blocks: the SSL head sees vanilla+common, "

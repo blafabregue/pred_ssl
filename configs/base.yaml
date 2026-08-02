@@ -55,6 +55,8 @@ augself: false
 # with the relational head and with augself; rel_lambda weights the E-SSL loss.
 essl: false
 essl_crop_size: 112            # side of the predictor crop, in pixels
+essl_factors: [rotation]       # predicted factors; >1 is our extended_essl variant
+essl_bins: 4                   # bins for continuous factors (their "four-fold blur")
 
 # Augmentation.
 aug_sharing: true              # true -> RelPairTransform; false -> StandardTwoViewTransform

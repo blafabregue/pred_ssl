@@ -1,0 +1,25 @@
+# extended_essl -- OUR extension of E-SSL's formulation to the full factor set, not a
+# method proposed by Dangovski et al. The name is deliberate: the settings below are
+# invented by us, since their paper predicts one transformation per run and never had
+# to choose bin edges for the continuous factors.
+#
+# Purpose: make the comparison symmetric in coverage. `essl` predicts rotation alone,
+# so E-SSL(1 factor) vs RelPred(9 factors) confounds formulation with coverage. Here
+# both predict the same factors, and the only remaining difference is the target --
+# per-view binned classification against relational same/different with margins.
+#
+# What the extension requires, and what it reveals:
+#   - discrete factors (rotation, hflip, grayscale) carry over directly;
+#   - continuous factors must be BINNED (essl_bins, following their "four-fold blur"),
+#     which introduces bin edges with no perceptual justification;
+#   - the crop is absent, and not by omission: its parameters are not identifiable
+#     from the cropped view alone, so no per-view target exists. Only pair-based
+#     formulations (AugSelf's difference, our relation) can cover it.
+# Per-factor accuracies are logged, so which of these targets is actually learnable
+# from a single view is measured rather than asserted.
+essl: true
+rel_lambda: 0.4
+aug_sharing: false
+essl_crop_size: 112
+essl_bins: 4
+essl_factors: [rotation, hflip, brightness, contrast, saturation, hue, grayscale, blur]

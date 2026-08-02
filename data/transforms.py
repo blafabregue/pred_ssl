@@ -409,6 +409,46 @@ class RelPairTransform:
         return v1, v2, torch.from_numpy(labels), torch.from_numpy(mask)
 
 
+# --- E-SSL per-view targets -------------------------------------------------
+# Factors whose value is a discrete class, so E-SSL's formulation applies directly.
+ESSL_DISCRETE = {"rotation": len(ROT_ANGLES), "hflip": 2, "grayscale": 2}
+# Continuous factors have no discrete class, so per-view prediction requires binning
+# (E-SSL does this for blur: their "four-fold blur" cuts a continuous sigma into 4).
+# The crop is deliberately absent: its parameters are not identifiable from the
+# cropped view alone -- one would need the original image as a reference -- so no
+# per-view target exists for it. Only pair-based formulations can cover it.
+ESSL_CONTINUOUS = ("brightness", "contrast", "saturation", "hue", "blur")
+
+
+def essl_num_classes(factor, bins):
+    """Number of per-view classes E-SSL would predict for a factor."""
+    if factor in ESSL_DISCRETE:
+        return ESSL_DISCRETE[factor]
+    if factor in ESSL_CONTINUOUS:
+        return bins
+    raise ValueError(f"factor '{factor}' has no per-view E-SSL target "
+                     f"(the crop is not identifiable from a single view)")
+
+
+def essl_label(factor, value, bins, color_strength=1.0):
+    """The per-view class of a factor's realized parameter."""
+    if factor == "rotation":
+        return ROT_ANGLES.index(value)
+    if factor in ("hflip", "grayscale"):
+        return int(bool(value))
+    s = color_strength
+    if factor == "blur":
+        # bin 0 = not applied, then the applied sigma range split over the rest
+        if value <= 0:
+            return 0
+        lo, hi = SIGMA_RANGE
+        k = int((value - lo) / (hi - lo) * (bins - 1))
+        return 1 + min(max(k, 0), bins - 2)
+    lo, hi = (-0.1 * s, 0.1 * s) if factor == "hue" else (1 - 0.4 * s, 1 + 0.4 * s)
+    k = int((value - lo) / (hi - lo) * bins)
+    return min(max(k, 0), bins - 1)
+
+
 class ESSLTransform:
     """E-SSL view generation (Dangovski et al., 2022), with its safeguards intact.
 
@@ -420,14 +460,21 @@ class ESSLTransform:
     predictor exploits -- so reproducing it faithfully is the whole point of using
     E-SSL as a baseline rather than as the stress test of Section 4.
 
-    Returns ``(view1, view2, pred_view, label)`` where ``label`` indexes the applied
-    transformation (4-fold rotation by default, the paper's ImageNet setting).
+    Returns ``(view1, view2, pred_view, labels)`` where ``labels`` holds one class per
+    predicted factor. With the default ``essl_factors=("rotation",)`` this is E-SSL as
+    published; naming more factors gives the ``extended_essl`` variant of this paper,
+    which is our extension rather than theirs -- it requires binning the continuous
+    factors, a choice their formulation forces but never had to make.
     """
 
     N_ROT = 4
 
-    def __init__(self, crop_size=112, color_strength=1.0, crop_scale=(0.2, 1.0),
+    def __init__(self, crop_size=112, factors=("rotation",), bins=4,
+                 color_strength=1.0, crop_scale=(0.2, 1.0),
                  out_size=224, p=None, mean=MEAN, std=STD):
+        self.factors = tuple(factors)
+        self.bins = bins
+        self.num_classes = [essl_num_classes(f, bins) for f in self.factors]
         self.crop_size = crop_size
         self.p = p if p is not None else dict(DEFAULT_P)
         self.color_strength = color_strength
@@ -459,11 +506,15 @@ class ESSLTransform:
         params["crop"] = _sample_crop_from_size(img.size[0], img.size[1],
                                                 self.crop_scale,
                                                 (3.0 / 4.0, 4.0 / 3.0), rng)
-        k = rng.randrange(self.N_ROT)           # the transformation to be predicted
-        params["rotation"] = ROT_ANGLES[k]
+        # the transformation(s) to be predicted are drawn here so their realized
+        # values are known exactly
+        params["rotation"] = ROT_ANGLES[rng.randrange(self.N_ROT)]
         pred = apply_pipeline(img, params, scale=self.crop_scale,
                               out_size=self.crop_size, mean=self.mean, std=self.std)
-        return v1, v2, pred, torch.tensor(k, dtype=torch.long)
+        labels = torch.tensor(
+            [essl_label(f, params[f], self.bins, self.color_strength)
+             for f in self.factors], dtype=torch.long)
+        return v1, v2, pred, labels
 
 
 # LooC groups several of our fine-grained factors into one "augmentation" -- the
@@ -742,6 +793,8 @@ def build_transform(cfg):
     if cfg.get("essl", False):
         return ESSLTransform(
             crop_size=cfg.get("essl_crop_size", 112),
+            factors=cfg.get("essl_factors", ("rotation",)),
+            bins=cfg.get("essl_bins", 4),
             color_strength=cfg.get("color_strength", 1.0),
             crop_scale=cfg.get("crop_scale", (0.2, 1.0)),
         )

@@ -170,6 +170,16 @@ class ConfigModel:
             raise ValidationError("unhandled type %s" % t)
 
         # framework guards
+        if kn.key == "essl_factors":
+            from ..data.transforms import ESSL_CONTINUOUS, ESSL_DISCRETE
+            allowed = set(ESSL_DISCRETE) | set(ESSL_CONTINUOUS)
+            bad = [f for f in v if f not in allowed]
+            if bad:
+                raise ValidationError(
+                    "no per-view E-SSL target for %s (the crop is not identifiable from "
+                    "a single view); choose from %s" % (bad, sorted(allowed)))
+            if not v:
+                raise ValidationError("essl_factors must name at least one factor")
         if kn.key == "looc_augs":
             from ..data.transforms import LOOC_GROUPS
             unknown = [g for g in v if g not in LOOC_GROUPS]
