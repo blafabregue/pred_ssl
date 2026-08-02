@@ -50,6 +50,12 @@ split_decov_lambda: 0.0          # >0 adds a cross-correlation penalty between t
 # head; rel_lambda then weights the AugSelf loss.
 augself: false
 
+# E-SSL baseline (experiment essl): standard augmentation + a multi-layer head
+# classifying the transformation applied to a SEPARATE small crop. Mutually exclusive
+# with the relational head and with augself; rel_lambda weights the E-SSL loss.
+essl: false
+essl_crop_size: 112            # side of the predictor crop, in pixels
+
 # Augmentation.
 aug_sharing: true              # true -> RelPairTransform; false -> StandardTwoViewTransform
 crop_scale: [0.2, 1.0]

@@ -243,6 +243,15 @@ KNOBS = [
                   "rel_lambda then weights the AugSelf loss",
          doc="AugSelf baseline (Lee et al. 2021): standard augmentation + per-augmentation "
              "3-layer MLPs regressing the two views' parameter difference (crop, colour)."),
+    Knob("essl", "rel", "train", "bool", False,
+         coupling="set by experiment essl; mutually exclusive with the relational head "
+                  "and with augself, rel_lambda then weights the E-SSL loss",
+         doc="E-SSL baseline (Dangovski et al. 2022): a multi-layer head classifying the "
+             "transformation applied to a separate small crop."),
+    Knob("essl_crop_size", "rel", "train", "int", 112, valid=(1, None),
+         coupling="used only when essl=ON; the small crop is E-SSL's shortcut guard",
+         doc="Side, in pixels, of E-SSL's separate predictor crop (paper ratio: half the "
+             "contrastive view)."),
     Knob("feat_split", "rel", "train", "bool", False,
          coupling="set by experiment relpred_split; only meaningful with rel_lambda>0",
          doc="Partition h into [vanilla|common|rel] blocks: the SSL head sees vanilla+common, "

@@ -35,6 +35,7 @@ import os
 VARIANTS = {
     "baseline":      ("baseline",      "vanilla SSL, no relational head"),
     "augself":       ("augself",       "AugSelf baseline (Lee et al. 2021), closest prior work"),
+    "essl":          ("essl",          "E-SSL baseline (Dangovski et al. 2022), with its safeguards"),
     "relpred":       ("relpred",       "vanilla + relational loss"),
     "relpred_proj3": ("relpred_proj3", "relpred + custom 3-layer projection head"),
     "relpred_proj6": ("relpred_proj6", "relpred + custom 6-layer projection head"),

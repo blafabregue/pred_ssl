@@ -409,6 +409,63 @@ class RelPairTransform:
         return v1, v2, torch.from_numpy(labels), torch.from_numpy(mask)
 
 
+class ESSLTransform:
+    """E-SSL view generation (Dangovski et al., 2022), with its safeguards intact.
+
+    E-SSL leaves the contrastive pipeline untouched and adds a *separate* predictor
+    view: a smaller crop of the same image, to which one transformation is applied,
+    and whose class the auxiliary head must name. The separate small crop is the
+    design choice that keeps the task out of shortcut range -- it is too small to
+    carry the seam and frequency artifacts that Section 4 shows a full-resolution
+    predictor exploits -- so reproducing it faithfully is the whole point of using
+    E-SSL as a baseline rather than as the stress test of Section 4.
+
+    Returns ``(view1, view2, pred_view, label)`` where ``label`` indexes the applied
+    transformation (4-fold rotation by default, the paper's ImageNet setting).
+    """
+
+    N_ROT = 4
+
+    def __init__(self, crop_size=112, color_strength=1.0, crop_scale=(0.2, 1.0),
+                 out_size=224, p=None, mean=MEAN, std=STD):
+        self.crop_size = crop_size
+        self.p = p if p is not None else dict(DEFAULT_P)
+        self.color_strength = color_strength
+        self.crop_scale = tuple(crop_scale)
+        self.out_size = out_size
+        self.mean, self.std = mean, std
+        self.ssl_transform = StandardTwoViewTransform(
+            use_rotation=False, use_color=True, color_strength=color_strength,
+            crop_scale=crop_scale, out_size=out_size, mean=mean, std=std)
+
+    def _pred_params(self, rng):
+        s = self.color_strength
+        lo, hi = 1.0 - 0.4 * s, 1.0 + 0.4 * s
+        return {
+            "rotation": 0,                      # applied separately, it is the label
+            "hflip": rng.random() < self.p["hflip"],
+            "brightness": rng.uniform(lo, hi), "contrast": rng.uniform(lo, hi),
+            "saturation": rng.uniform(lo, hi), "hue": rng.uniform(-0.1 * s, 0.1 * s),
+            "grayscale": rng.random() < self.p["grayscale"],
+            "blur": rng.uniform(*SIGMA_RANGE) if rng.random() < self.p["blur"] else 0.0,
+        }
+
+    def __call__(self, img):
+        img = img.convert("RGB")
+        v1, v2, _, _ = self.ssl_transform(img)
+        rng = random
+        # the predictor's own small crop, augmented independently of the SSL pair
+        params = self._pred_params(rng)
+        params["crop"] = _sample_crop_from_size(img.size[0], img.size[1],
+                                                self.crop_scale,
+                                                (3.0 / 4.0, 4.0 / 3.0), rng)
+        k = rng.randrange(self.N_ROT)           # the transformation to be predicted
+        params["rotation"] = ROT_ANGLES[k]
+        pred = apply_pipeline(img, params, scale=self.crop_scale,
+                              out_size=self.crop_size, mean=self.mean, std=self.std)
+        return v1, v2, pred, torch.tensor(k, dtype=torch.long)
+
+
 # LooC groups several of our fine-grained factors into one "augmentation" -- the
 # paper treats colour jittering as a single augmentation, whereas we parameterize
 # its four components separately.
@@ -680,6 +737,12 @@ def build_transform(cfg):
             color_strength=cfg.get("color_strength", 1.0),
             delta=cfg.get("delta"),
             blur_mode=cfg.get("blur_mode", "sigma"),
+            crop_scale=cfg.get("crop_scale", (0.2, 1.0)),
+        )
+    if cfg.get("essl", False):
+        return ESSLTransform(
+            crop_size=cfg.get("essl_crop_size", 112),
+            color_strength=cfg.get("color_strength", 1.0),
             crop_scale=cfg.get("crop_scale", (0.2, 1.0)),
         )
     if cfg.get("augself", False):

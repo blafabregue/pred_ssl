@@ -1,0 +1,18 @@
+# E-SSL baseline (Dangovski et al., ICLR 2022) -- the per-view predictive method whose
+# formulation this paper replaces, run WITH its safeguards so that the main table
+# compares against E-SSL as published rather than against the deliberately weakened
+# predictor of the shortcut-collapse study.
+#
+# Faithful to the paper:
+#   - the contrastive pipeline is untouched (standard independent augmentation);
+#   - the predictor reads a SEPARATE, SMALLER crop (essl_crop_size), which is what
+#     keeps the task out of shortcut range;
+#   - the predictor is a multi-layer MLP, not a single linear layer;
+#   - one transformation is predicted per run: 4-fold rotation, their ImageNet setting;
+#   - lambda = 0.4, the paper's auxiliary weight (ours is 0.5).
+#
+# Costs one extra backbone forward per step, on the small predictor crop.
+essl: true
+rel_lambda: 0.4
+aug_sharing: false
+essl_crop_size: 112       # half of 224, matching the paper's 16/32 ratio on CIFAR-10

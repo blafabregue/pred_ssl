@@ -30,7 +30,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pred_ssl.ckpt import AsyncCheckpointSaver, snapshot_to_cpu  # noqa: E402
 from pred_ssl.data.loader import build_pretrain_loader  # noqa: E402
-from pred_ssl.data.transforms import FACTORS  # noqa: E402
+from pred_ssl.data.transforms import FACTORS, ESSLTransform  # noqa: E402
+from pred_ssl.models.essl_head import ESSLHead  # noqa: E402
 from pred_ssl.eval.knn import build_knn_monitor  # noqa: E402
 from pred_ssl.losses import AugSelfLoss, RelPairLoss, SplitDecovLoss  # noqa: E402
 from pred_ssl.models.augself_head import AUGSELF_DIM, AUGSELF_GROUPS, AugSelfHead  # noqa: E402
@@ -131,7 +132,8 @@ def adjust_learning_rate(optimizer, epoch, cfg, base_lr):
 def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, cfg, epoch,
                     split=None, decov_criterion=None):
     augself = cfg.get("augself", False)
-    use_rel = rel_head is not None and cfg["rel_lambda"] > 0 and not augself
+    essl = cfg.get("essl", False)
+    use_rel = rel_head is not None and cfg["rel_lambda"] > 0 and not (augself or essl)
     decoupled = cfg.get("rel_decoupled", False)
     looc_multiview = cfg.get("framework") == "looc" and cfg.get("full_multiview", False)
     grad_clip = cfg.get("grad_clip", 0.0)
@@ -161,7 +163,8 @@ def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, c
             v1, v2, *rest = data
             extra_keys, labels, mask = tuple(rest[:-2]), rest[-2], rest[-1]
         else:
-            # augself: (v1, v2, omega1, omega2); otherwise (v1, v2, labels, mask)
+            # augself: (v1, v2, omega1, omega2); essl: (v1, v2, pred_view, class);
+            # otherwise (v1, v2, labels, mask)
             v1, v2, labels, mask = data
         v1 = v1.to(device, non_blocking=True)
         v2 = v2.to(device, non_blocking=True)
@@ -170,6 +173,20 @@ def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, c
         out = model(v1, v2, *extra_keys)
         loss = out.ssl_loss
         pred_loss_val = 0.0
+
+        if essl and rel_head is not None:
+            # E-SSL: classify the transformation applied to a SEPARATE small crop,
+            # which costs one extra forward through the trainable backbone.
+            pred_view = labels.to(device, non_blocking=True)
+            tclass = mask.to(device, non_blocking=True)
+            h_pred = encode_features(model, cfg["framework"], pred_view)
+            logits = rel_head(h_pred)
+            aug_loss = rel_criterion(logits, tclass)
+            loss = loss + cfg["rel_lambda"] * aug_loss
+            pred_loss_val = aug_loss.item()
+            with torch.no_grad():
+                acc = (logits.argmax(dim=1) == tclass).float().mean().item() * 100.0
+                factor_meters[0].update(acc, v1.size(0))
 
         if augself and rel_head is not None:
             # AugSelf baseline: regress omega1 - omega2 from the ordered [h1, h2].
@@ -332,7 +349,16 @@ def main():
     rel_head = None
     rel_criterion = None
     decov_criterion = None
-    if cfg.get("augself", False) and cfg["rel_lambda"] > 0:
+    if cfg.get("essl", False) and cfg["rel_lambda"] > 0:
+        # E-SSL baseline: a multi-layer head classifying the transformation applied
+        # to a separate small crop (the paper's safeguards, kept).
+        rel_head = ESSLHead(split.rel_dim, num_classes=ESSLTransform.N_ROT,
+                            hidden=cfg["rel_head_hidden"]).to(device)
+        rel_criterion = torch.nn.CrossEntropyLoss().to(device)
+        print(f"=> E-SSL head: {ESSLTransform.N_ROT}-way rotation on a "
+              f"{cfg.get('essl_crop_size', 112)}px predictor crop, "
+              f"lambda={cfg['rel_lambda']}", flush=True)
+    elif cfg.get("augself", False) and cfg["rel_lambda"] > 0:
         # AugSelf baseline (Lee et al., 2021): per-augmentation 3-layer MLPs
         # regressing omega1 - omega2 from the ordered concatenation [h1, h2].
         rel_head = AugSelfHead(split.rel_dim, hidden=cfg["rel_head_hidden"]).to(device)
