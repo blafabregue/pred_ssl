@@ -21,6 +21,8 @@ lr_scale_by_batch: true        # lr *= batch_size / 256
 lr_schedule: cosine            # cosine | step
 schedule: [300, 400]           # step-decay milestones (used only when lr_schedule == step)
 warmup_epochs: 0               # linear LR warmup over the first N epochs (0 = off)
+grad_clip: 0.0                 # max gradient norm (0 = off). Only needed by objectives
+                               # whose auxiliary loss is unbounded; see augself.yaml.
 
 # Relational head.
 rel_lambda: 0.5                # experiment overrides: baseline -> 0.0

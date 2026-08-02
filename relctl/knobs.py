@@ -200,6 +200,10 @@ KNOBS = [
     Knob("warmup_epochs", "optim", "train", "int", 0, valid=(0, None),
          coupling="set to 10 for vicreg; required for lars stability",
          doc="Linear LR warmup over the first N epochs (0 = off)."),
+    Knob("grad_clip", "optim", "train", "float", 0.0, valid=(0.0, None),
+         coupling="set to 10 by experiment augself, whose l2 head diverges at lr 0.3",
+         doc="Max gradient norm (0 = off). Healthy SimCLR training has a median norm "
+             "of ~1.9, so 10 is non-binding in normal operation."),
     Knob("momentum", "optim", "train", "float", 0.9, valid=(0.0, 1.0),
          doc="SGD momentum (distinct from MoCo/LooC EMA momentum)."),
     Knob("weight_decay", "optim", "train", "float", 1.0e-4, valid=(0.0, None),

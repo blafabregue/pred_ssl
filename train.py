@@ -134,6 +134,10 @@ def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, c
     use_rel = rel_head is not None and cfg["rel_lambda"] > 0 and not augself
     decoupled = cfg.get("rel_decoupled", False)
     looc_multiview = cfg.get("framework") == "looc" and cfg.get("full_multiview", False)
+    grad_clip = cfg.get("grad_clip", 0.0)
+    clip_params = list(model.parameters())
+    if rel_head is not None:
+        clip_params += list(rel_head.parameters())
     decov_lambda = cfg.get("split_decov_lambda", 0.0)
     use_decov = (decov_criterion is not None and split is not None and split.enabled
                  and decov_lambda > 0 and split.n_vanilla > 0 and split.n_rel > 0)
@@ -213,6 +217,8 @@ def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, c
 
         optimizer.zero_grad()
         loss.backward()
+        if grad_clip > 0:
+            torch.nn.utils.clip_grad_norm_(clip_params, grad_clip)
         optimizer.step()
 
         bs = v1.size(0)
