@@ -173,9 +173,11 @@ def test_split_projector_input_width(fw):
     model = build_model(_cfg(fw))
     s = model.split
     proj = {"simclr": "projector", "moco": "projector_q", "byol": "online_projector",
-            "looc": "head_q", "vicreg": "expander"}[fw]
-    first_linear = [m for m in getattr(model, proj).modules()
-                    if isinstance(m, torch.nn.Linear)][0]
+            "looc": "heads_q", "vicreg": "expander"}[fw]
+    head = getattr(model, proj)
+    if fw == "looc":                       # a ModuleList of per-augmentation spaces
+        head = head[0]
+    first_linear = [m for m in head.modules() if isinstance(m, torch.nn.Linear)][0]
     assert first_linear.in_features == s.ssl_dim, \
         f"{fw} SSL head must consume the {s.ssl_dim}-dim [vanilla|common] slice"
 

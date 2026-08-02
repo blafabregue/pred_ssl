@@ -409,6 +409,127 @@ class RelPairTransform:
         return v1, v2, torch.from_numpy(labels), torch.from_numpy(mask)
 
 
+# LooC groups several of our fine-grained factors into one "augmentation" -- the
+# paper treats colour jittering as a single augmentation, whereas we parameterize
+# its four components separately.
+LOOC_GROUPS = {
+    "rotation":  ("rotation",),
+    "color":     ("brightness", "contrast", "saturation", "hue"),
+    "hflip":     ("hflip",),
+    "grayscale": ("grayscale",),
+    "blur":      ("blur",),
+    "crop":      ("crop",),
+}
+
+
+def resample_different(params, factor_names, color_strength=1.0, delta=None,
+                       blur_mode="sigma", p=None, img_size=(256, 256),
+                       crop_scale=(0.2, 1.0), crop_ratio=(3.0 / 4.0, 4.0 / 3.0),
+                       rng=None):
+    """Copy ``params`` with the named factors redrawn guaranteed-different.
+
+    This is LooC's key-view construction: a key that shares every augmentation
+    parameter with the query except the one its embedding space is meant to remain
+    sensitive to.
+    """
+    if rng is None:
+        rng = random
+    if delta is None:
+        delta = DEFAULT_DELTA
+    if p is None:
+        p = DEFAULT_P
+    out = dict(params)
+    s = color_strength
+    cj_lo, cj_hi = 1.0 - 0.4 * s, 1.0 + 0.4 * s
+    hue_lim = 0.1 * s
+
+    for name in factor_names:
+        v = params[name]
+        if name == "rotation":
+            out[name] = rng.choice([a for a in ROT_ANGLES if a != v])
+        elif name in ("hflip", "grayscale"):
+            out[name] = not v
+        elif name in ("brightness", "contrast", "saturation"):
+            out[name] = _sample_diff_continuous(cj_lo, cj_hi, v, delta[name], rng)
+        elif name == "hue":
+            out[name] = _sample_diff_continuous(-hue_lim, hue_lim, v, delta["hue"], rng)
+        elif name == "blur":
+            _, out[name] = _sample_blur_pair(False, rng, delta["blur"], blur_mode,
+                                             p["blur"])
+        elif name == "crop":
+            _, out[name] = _sample_crop_pair(False, rng, img_size, crop_scale,
+                                             crop_ratio, delta["crop"])
+        else:
+            raise ValueError(f"unknown factor: {name}")
+    return out
+
+
+class LooCTransform:
+    """Multi-view generation for LooC (Xiao et al., 2021).
+
+    LooC keeps one embedding space per augmentation, each invariant to every
+    augmentation *except* its own. That requires one key view per space:
+
+      - ``key0``  (all-invariant space): augmented independently of the query, the
+        standard contrastive pair;
+      - ``key_a`` (space of augmentation ``a``): shares every parameter with the
+        query except those of group ``a``, which are redrawn guaranteed-different,
+        so the only way to match query and key in that space is to encode ``a``.
+
+    Returns ``(query, key0, key_a1, ..., key_an, labels[F], mask[F])``. The labels
+    describe the ``(query, key0)`` pair, so the relational head sees the same kind
+    of pair as under every other framework; with ``aug_sharing=False`` that pair is
+    independently augmented, which is LooC's own setting.
+    """
+
+    def __init__(self, looc_augs=("rotation", "color"), aug_sharing=True,
+                 p_same=0.5, color_strength=1.0, delta=None, blur_mode="sigma",
+                 crop_scale=(0.2, 1.0), out_size=224, p=None, mean=MEAN, std=STD):
+        for g in looc_augs:
+            if g not in LOOC_GROUPS:
+                raise ValueError(f"unknown LooC augmentation group '{g}'; "
+                                 f"choose from {sorted(LOOC_GROUPS)}")
+        self.looc_augs = tuple(looc_augs)
+        self.aug_sharing = aug_sharing
+        self.p_same = p_same
+        self.color_strength = color_strength
+        self.delta = delta if delta is not None else dict(DEFAULT_DELTA)
+        self.blur_mode = blur_mode
+        self.crop_scale = tuple(crop_scale)
+        self.out_size = out_size
+        self.p = p if p is not None else dict(DEFAULT_P)
+        self.mean = mean
+        self.std = std
+
+    def __call__(self, img):
+        img = img.convert("RGB")
+        kw = dict(color_strength=self.color_strength, delta=self.delta,
+                  blur_mode=self.blur_mode, p=self.p, img_size=img.size,
+                  crop_scale=self.crop_scale)
+        # query and the all-invariant key: per-factor sharing when the relational
+        # head is active, independent draws otherwise (LooC's own setting).
+        pq, pk0, labels = sample_factor_params(
+            p_same=self.p_same if self.aug_sharing else 0.0, **kw)
+        if not self.aug_sharing:
+            _, pk0, _ = sample_factor_params(p_same=0.0, **kw)
+            labels = np.zeros(NUM_FACTORS, dtype=np.float32)
+
+        views = [
+            apply_pipeline(img, pq, scale=self.crop_scale, out_size=self.out_size,
+                           mean=self.mean, std=self.std),
+            apply_pipeline(img, pk0, scale=self.crop_scale, out_size=self.out_size,
+                           mean=self.mean, std=self.std),
+        ]
+        # one leave-one-out key per LooC space
+        for g in self.looc_augs:
+            pk = resample_different(pq, LOOC_GROUPS[g], **kw)
+            views.append(apply_pipeline(img, pk, scale=self.crop_scale,
+                                        out_size=self.out_size,
+                                        mean=self.mean, std=self.std))
+        mask = compute_mask(pq, pk0)
+        return (*views, torch.from_numpy(labels), torch.from_numpy(mask))
+
+
 class AugSelfTransform:
     """Standard independent two-view augmentation + each view's augmentation parameters.
 
@@ -551,6 +672,16 @@ class DecoupledRelTransform:
 
 def build_transform(cfg):
     """Select the pretraining transform from a config dict."""
+    if cfg.get("framework") == "looc" and cfg.get("full_multiview", False):
+        return LooCTransform(
+            looc_augs=cfg.get("looc_augs", ("rotation", "color")),
+            aug_sharing=cfg.get("aug_sharing", True) and cfg.get("rel_lambda", 0.0) > 0,
+            p_same=cfg.get("p_same", 0.5),
+            color_strength=cfg.get("color_strength", 1.0),
+            delta=cfg.get("delta"),
+            blur_mode=cfg.get("blur_mode", "sigma"),
+            crop_scale=cfg.get("crop_scale", (0.2, 1.0)),
+        )
     if cfg.get("augself", False):
         return AugSelfTransform(
             color_strength=cfg.get("color_strength", 1.0),

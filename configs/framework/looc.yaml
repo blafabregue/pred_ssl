@@ -7,5 +7,18 @@ dim: 128
 K: 16384
 m: 0.999
 T: 0.2
-n_aug: 0              # v1: plain-MoCo behaviour; pairwise head on (q, k0)
-full_multiview: false
+# Full LooC: one embedding space per augmentation, each invariant to every
+# augmentation except its own (Xiao et al., 2021). looc_augs names the groups, each
+# adding one projection head, one queue and one key view per step.
+# full_multiview=false reduces LooC exactly to MoCo and is kept only for backwards
+# compatibility with earlier logs -- it is NOT a LooC baseline.
+full_multiview: true
+looc_augs: [rotation, color]
+n_aug: 2              # kept in sync with len(looc_augs) for reporting
+#
+# NOTE for cross-framework comparisons: the paper SUMS the per-space InfoNCE terms,
+# so LooC's SSL loss is ~n_spaces times larger than a single-space framework's. With
+# a shared rel_lambda this makes the relational head's *relative* weight smaller for
+# LooC than elsewhere. Baseline-vs-relpred comparisons within LooC are unaffected
+# (same SSL scale on both sides); only the cross-framework size of the relpred effect
+# is. We keep the sum because it is what the paper specifies.

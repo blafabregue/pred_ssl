@@ -133,6 +133,7 @@ def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, c
     augself = cfg.get("augself", False)
     use_rel = rel_head is not None and cfg["rel_lambda"] > 0 and not augself
     decoupled = cfg.get("rel_decoupled", False)
+    looc_multiview = cfg.get("framework") == "looc" and cfg.get("full_multiview", False)
     decov_lambda = cfg.get("split_decov_lambda", 0.0)
     use_decov = (decov_criterion is not None and split is not None and split.enabled
                  and decov_lambda > 0 and split.n_vanilla > 0 and split.n_rel > 0)
@@ -148,15 +149,21 @@ def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, c
     end = time.time()
 
     for i, (data, _) in enumerate(loader):
+        extra_keys = ()
         if decoupled:
             v1, v2, u1, u2, labels, mask = data
+        elif looc_multiview:
+            # (query, key0, key_a1..key_an, labels, mask)
+            v1, v2, *rest = data
+            extra_keys, labels, mask = tuple(rest[:-2]), rest[-2], rest[-1]
         else:
             # augself: (v1, v2, omega1, omega2); otherwise (v1, v2, labels, mask)
             v1, v2, labels, mask = data
         v1 = v1.to(device, non_blocking=True)
         v2 = v2.to(device, non_blocking=True)
+        extra_keys = tuple(k.to(device, non_blocking=True) for k in extra_keys)
 
-        out = model(v1, v2)
+        out = model(v1, v2, *extra_keys)
         loss = out.ssl_loss
         pred_loss_val = 0.0
 

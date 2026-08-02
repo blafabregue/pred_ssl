@@ -170,12 +170,15 @@ class ConfigModel:
             raise ValidationError("unhandled type %s" % t)
 
         # framework guards
-        if kn.key == "n_aug" and v != 0:
-            raise ValidationError("looc v1 supports n_aug=0 only (n_aug!=0 raises "
-                                  "NotImplementedError at train start)")
-        if kn.key == "full_multiview" and v:
-            raise ValidationError("looc v1 supports full_multiview=false only (true raises "
-                                  "NotImplementedError at train start)")
+        if kn.key == "looc_augs":
+            from ..data.transforms import LOOC_GROUPS
+            unknown = [g for g in v if g not in LOOC_GROUPS]
+            if unknown:
+                raise ValidationError("unknown LooC augmentation group(s) %s; choose from %s"
+                                      % (unknown, sorted(LOOC_GROUPS)))
+            if not v:
+                raise ValidationError("looc_augs must name at least one group "
+                                      "(an empty list reduces LooC to MoCo)")
         return v
 
     def _as_int(self, kn, raw):

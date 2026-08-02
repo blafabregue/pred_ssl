@@ -50,9 +50,9 @@ def test_validation_guards():
     m = ConfigModel(REPO_ROOT)
     m.set_framework("looc")
     with pytest.raises(ValidationError):
-        m.set("n_aug", "2")                       # NotImplementedError guard
+        m.set("looc_augs", "rotation nope")       # unknown augmentation group
     with pytest.raises(ValidationError):
-        m.set("full_multiview", "true")
+        m.set("looc_augs", "")                    # empty reduces LooC to MoCo
     with pytest.raises(ValidationError):
         m.set("crop_scale", "0.9 0.2")            # lo < hi
     with pytest.raises(ValidationError):

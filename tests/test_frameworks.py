@@ -128,20 +128,49 @@ def test_decoupled_relpred_step(fw):
         assert all(p.grad is None for p in mom.parameters()), "momentum encoder must NOT get grad"
 
 
-def test_looc_rejects_multiview():
+def test_looc_multiview_builds_one_space_per_augmentation():
+    # LooC's contribution is the per-augmentation embedding spaces: one projection
+    # head and one queue each, plus the all-invariant space Z0.
     cfg = _cfg("looc")
     cfg["full_multiview"] = True
-    with pytest.raises(NotImplementedError):
-        build_model(cfg)
+    cfg["looc_augs"] = ["rotation", "color"]
+    model = build_model(cfg)
+    assert model.n_spaces == 3                       # Z0 + rotation + color
+    assert len(model.heads_q) == 3 and len(model.heads_k) == 3
+    for s in range(3):
+        assert hasattr(model, f"queue_{s}") and hasattr(model, f"queue_ptr_{s}")
 
 
-# attribute holding the projection head on each framework's model
+def test_looc_multiview_forward_consumes_one_key_per_space():
+    cfg = _cfg("looc")
+    cfg["full_multiview"] = True
+    cfg["looc_augs"] = ["rotation", "color"]
+    model = build_model(cfg).train()
+    q = torch.randn(4, 3, 64, 64)
+    views = [torch.randn(4, 3, 64, 64) for _ in range(3)]   # k0, k_rot, k_color
+    out = model(q, *views)
+    assert torch.isfinite(out.ssl_loss)
+    assert out.h1.shape == (4, model.feat_dim) and out.h1.requires_grad
+    # the momentum branch must stay gradient-free
+    out.ssl_loss.backward()
+    assert all(p.grad is None for p in model.backbone_k.parameters())
+
+
+def test_looc_without_multiview_reduces_to_one_space():
+    cfg = _cfg("looc")
+    cfg["full_multiview"] = False
+    model = build_model(cfg)
+    assert model.n_spaces == 1
+
+
+# attribute holding the (first) projection head on each framework's model
 PROJECTOR_ATTR = {"simclr": "projector", "moco": "projector_q", "byol": "online_projector",
-                  "looc": "head_q", "vicreg": "expander"}
+                  "looc": "heads_q", "vicreg": "expander"}
 
 
 def _projector(model, fw):
-    return getattr(model, PROJECTOR_ATTR[fw])
+    head = getattr(model, PROJECTOR_ATTR[fw])
+    return head[0] if fw == "looc" else head        # LooC holds a ModuleList of spaces
 
 
 @pytest.mark.parametrize("fw", FRAMEWORKS)
