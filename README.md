@@ -189,6 +189,7 @@ the three variants, which differ *only* in `regress_factors`:
 | `posonly_geom` | crop, rotation, hflip | holds up best |
 | `posonly_all` | all nine | intermediate |
 | `posonly_color` | the six photometric | falsification arm: should collapse dimensionally |
+| `posonly_geom_decov` | crop, rotation, hflip | fallback arm: `posonly_geom` + decorrelation (λ=10) |
 
 ```bash
 FRAMEWORKS=posonly VARIANTS="posonly_geom posonly_color posonly_all baseline" bash pred_ssl/scripts/slurm_submit.sh
@@ -199,6 +200,18 @@ BatchNorm has been argued to supply an implicit contrastive signal on its own, s
 rerun the control with `align_proj_bn: false` before crediting the auxiliary head.
 Read these runs on `erank`, never on the loss: **both** failure modes make the loss
 go down.
+
+**The decorrelation net** (`align_decov_lambda`, off everywhere else) is the fallback
+if the clean runs collapse: it turns a dead end into the weaker but still answerable
+question of *how little* regularization transformation prediction needs. It penalizes
+the off-diagonal of the embedding's correlation matrix — the decorrelation half of
+VICReg, on `z` (D=256) rather than `h` (D=2048), so D/N=1 at batch 256 instead of the
+32 our VICReg ran at. A variance hinge would be the wrong tool: correlated dimensions
+all pass a per-dimension std test while the rank stays at 1. Useful λ span is 1–100
+(the penalty's full-rank noise floor is ~0.004); sweep it with
+`--config-overlay` rather than new files. **It cannot prevent complete collapse** —
+a constant representation standardizes to noise and scores 0.0000, the penalty's best
+value — so a low `Decov` in the log is not by itself good news.
 
 ## Tests
 ```bash

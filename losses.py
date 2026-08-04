@@ -120,6 +120,58 @@ class VICRegLoss(nn.Module):
         return self.sim_coeff * repr_loss + self.std_coeff * std_loss + self.cov_coeff * cov_loss
 
 
+class DecorrelationLoss(nn.Module):
+    """Off-diagonal covariance penalty on one embedding: VICReg's covariance term.
+
+    The anti-collapse safety net for the positives-only framework, and specifically
+    the one that matches the failure mode predicted there. A variance hinge (the
+    other half of VICReg) would be the wrong tool: it asks each dimension to keep
+    std >= gamma, which perfectly CORRELATED dimensions all satisfy while the rank
+    stays at 1. Rank is what is at risk here, and decorrelation is what addresses it.
+
+    It detects the failure for the right reason: a representation confined to a
+    k-dimensional subspace with k < D makes the D coordinates linearly dependent,
+    which shows up as off-diagonal structure whatever basis the subspace sits in.
+    Measured at D = N = 256 on L2-normalized embeddings, the term reads 0.004 at
+    full rank (the sampling noise floor), 0.03 at rank 32, 0.12 at rank 8 and 0.50
+    at rank 2 -- so lambda in the 1-100 range is the useful span, and the value
+    chosen has to be read against a 0.004 floor rather than against 0.
+
+    It does NOT prevent COMPLETE collapse, and cannot: a constant representation
+    standardizes to pure noise, which is uncorrelated, so the term reads 0.0000 --
+    its best possible value. VICReg blocks that case with its variance term; here
+    it is the auxiliary prediction head's job (see models/frameworks/posonly.py),
+    which is why this is a companion to that head and not a replacement for it.
+    One more reason these runs are read on the collapse diagnostics: a fully
+    collapsed model scores perfectly on this penalty.
+
+    Two departures from VICReg's version, both deliberate:
+
+    Scale. Dimensions are standardized first, so this is the CORRELATION matrix and
+    entries live in [-1, 1]. VICReg penalizes the raw covariance and consequently
+    needs its variance term, without which the covariance is trivially minimized by
+    shrinking z toward zero. Standardizing removes that escape route directly, and
+    it puts the term on an absolute scale: 0 is decorrelated, 1 is fully redundant.
+    On L2-normalized embeddings the raw covariance form would instead sit around
+    1e-5 when healthy and 4e-3 when rank-collapsed, needing a lambda in the hundreds
+    to bite -- an easy way to set a number that quietly does nothing.
+
+    Estimation. The term estimates a DxD matrix from N samples, so D/N decides
+    whether it is signal or noise. Applied to the projector output (D=256) rather
+    than the backbone feature (D=2048), at batch 256 that ratio is 1, against the
+    official VICReg's 4 and against the 32 our own VICReg ran at before it was
+    found to be weak.
+    """
+
+    def forward(self, z):
+        n, d = z.shape
+        if n < 2:
+            return z.sum() * 0.0            # keeps the graph, contributes nothing
+        zs = (z - z.mean(dim=0)) / (z.std(dim=0) + 1e-6)
+        corr = (zs.T @ zs) / n                                   # (D, D)
+        return _off_diagonal_sq_sum(corr) / (d * (d - 1))
+
+
 class SplitDecovLoss(nn.Module):
     """Decorrelation penalty for the latent split (relpred_split).
 

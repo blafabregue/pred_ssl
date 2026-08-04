@@ -17,3 +17,7 @@ proj_dim: 256
 # "it did not collapse" result: BN has been argued to supply an implicit
 # contrastive signal on its own. Set false to rerun the control without it.
 align_proj_bn: true
+
+# Decorrelation safety net, OFF here on purpose: the headline claim only holds at 0.
+# See configs/experiment/posonly_geom_decov.yaml for the ladder.
+align_decov_lambda: 0.0

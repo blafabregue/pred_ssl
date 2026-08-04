@@ -30,7 +30,7 @@ from pred_ssl.collapse import collapse_stats, format_stats  # noqa: E402
 from pred_ssl.data.transforms import (  # noqa: E402
     FACTORS, GEOMETRIC_FACTORS, PHOTOMETRIC_FACTORS, REGRESS_DIMS, REGRESS_TOTAL,
     RelPairTransform, build_transform, factor_select_mask)
-from pred_ssl.losses import AlignmentLoss  # noqa: E402
+from pred_ssl.losses import AlignmentLoss, DecorrelationLoss  # noqa: E402
 from pred_ssl.models.frameworks import (  # noqa: E402
     backbone_state_dict, build_model, encode_features)
 from pred_ssl.relctl.config import _deep_merge, _load_yaml  # noqa: E402
@@ -110,6 +110,80 @@ def test_projector_batchnorm_is_switchable():
     cfg = _cfg()
     cfg["align_proj_bn"] = False
     assert not has_bn(build_model(cfg))
+
+
+# ---------------------------------------------------------------------------
+# The decorrelation safety net
+# ---------------------------------------------------------------------------
+
+def _lowrank(k, d=64, n=512, seed=0):
+    g = torch.Generator().manual_seed(seed)
+    basis = torch.linalg.qr(torch.randn(d, d, generator=g))[0][:, :k]
+    return torch.nn.functional.normalize(
+        torch.randn(n, k, generator=g) @ basis.t(), dim=1)
+
+
+def test_decorrelation_grows_as_the_rank_falls():
+    crit = DecorrelationLoss()
+    full, r16, r4 = (crit(_lowrank(k, d=64)).item() for k in (64, 16, 4))
+    assert full < r16 < r4
+    assert full < 0.05, "a full-rank embedding must sit near the noise floor"
+    assert r4 > 0.2, "a rank-4 embedding must be clearly penalized"
+
+
+def test_decorrelation_is_scale_invariant():
+    # standardization is what puts lambda on an interpretable scale; without it the
+    # term would move with the embedding norm and a fixed lambda would drift
+    crit = DecorrelationLoss()
+    z = _lowrank(8, d=64)
+    assert abs(crit(z).item() - crit(z * 100).item()) < 1e-4
+
+
+def test_decorrelation_cannot_see_complete_collapse():
+    # a constant standardizes to pure noise, which is uncorrelated, so the penalty
+    # reads its BEST value on the worst representation. Pinned because it is exactly
+    # the misreading the number invites -- complete collapse is the head's job.
+    crit = DecorrelationLoss()
+    const = torch.nn.functional.normalize(
+        torch.ones(256, 64) + 1e-6 * torch.randn(256, 64), dim=1)
+    assert crit(const).item() < crit(_lowrank(64, d=64)).item()
+
+
+def test_decorrelation_is_differentiable_and_finite():
+    crit = DecorrelationLoss()
+    z = _lowrank(4, d=32).requires_grad_(True)
+    loss = crit(z)
+    loss.backward()
+    assert torch.isfinite(loss) and torch.isfinite(z.grad).all()
+    assert torch.isfinite(crit(torch.zeros(8, 16))), "dead dimensions must not NaN"
+
+
+def test_framework_wires_the_penalty_only_when_enabled():
+    off = build_model(_cfg("posonly_geom"))
+    assert off.decov is None and off.decov_lambda == 0.0
+    on = build_model(_cfg("posonly_geom_decov"))
+    assert on.decov is not None and on.decov_lambda == 10.0
+    v1, v2 = torch.randn(4, 3, 32, 32), torch.randn(4, 3, 32, 32)
+    assert off.train()(v1, v2).decov_loss == 0.0
+    out = on.train()(v1, v2)
+    assert out.decov_loss > 0.0            # reported raw, for the log
+    assert torch.isfinite(out.ssl_loss)
+    out.ssl_loss.backward()                 # already weighted into the loss
+
+
+def test_decov_variant_differs_from_its_control_in_one_number():
+    plain, decov = _cfg("posonly_geom"), _cfg("posonly_geom_decov")
+    for key in ("rel_lambda", "aug_sharing", "p_same", "rel_regress",
+                "regress_factors", "framework", "crop_scale", "color_strength"):
+        assert plain[key] == decov[key], f"{key} differs; the arm would be confounded"
+    assert plain["align_decov_lambda"] == 0.0 and decov["align_decov_lambda"] > 0.0
+
+
+def test_the_headline_variants_keep_the_net_off():
+    # with it on, the model is VICReg's covariance term plus an auxiliary head and
+    # says nothing about whether prediction alone suffices
+    for v in ("posonly_geom", "posonly_color", "posonly_all", "baseline"):
+        assert _cfg(v)["align_decov_lambda"] == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -260,7 +334,7 @@ def test_posonly_is_registered_in_the_matrix_and_the_knob_registry():
                                               VARIANTS)
     assert "posonly" in FRAMEWORKS
     assert "posonly" in DEFAULT_FRAMEWORKS, "otherwise slurm_status never shows it"
-    for v in ("posonly_geom", "posonly_color", "posonly_all"):
+    for v in ("posonly_geom", "posonly_color", "posonly_all", "posonly_geom_decov"):
         assert v in VARIANTS and v in EXPERIMENTS and v in DEFAULT_VARIANTS
 
 
@@ -270,6 +344,7 @@ def test_the_matrix_pairs_posonly_variants_with_their_framework_only():
     # factor set, under a name that claims otherwise
     for fw in ("simclr", "moco", "byol", "looc", "vicreg", "barlow"):
         assert not applies(fw, "posonly_geom")
+        assert not applies(fw, "posonly_geom_decov")
         assert applies(fw, "relpred")           # unrestricted variants are untouched
     assert applies("posonly", "posonly_geom")
     # posonly only takes the variants bearing on its question

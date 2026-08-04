@@ -43,7 +43,7 @@ from ..backbones import build_backbone
 from ..projector import build_projector
 from ..split import build_split
 from ..types import ModelOutput
-from ...losses import AlignmentLoss
+from ...losses import AlignmentLoss, DecorrelationLoss
 
 
 def _build_mlp(in_dim, hidden_dim, out_dim, batch_norm=True):
@@ -74,9 +74,28 @@ class PosOnlyModel(nn.Module):
             cfg, d_in, lambda: _build_mlp(d_in, proj_hidden, proj_dim, proj_bn))
         self.criterion = AlignmentLoss()
 
+        # Optional safety net, OFF by default. The headline claim is that prediction
+        # alone suffices, and that claim only survives at lambda = 0 -- with this on,
+        # the model is VICReg's covariance term plus an auxiliary head, and says
+        # nothing about whether prediction could have done the job by itself. Its
+        # use is as a LADDER: if the clean runs collapse, sweeping it answers the
+        # weaker but still publishable question of how little regularization
+        # transformation prediction needs.
+        self.decov_lambda = cfg.get("align_decov_lambda", 0.0)
+        self.decov = DecorrelationLoss() if self.decov_lambda > 0 else None
+
     def forward(self, v1, v2):
         h1 = self.backbone(v1)                   # (N, feat_dim), fc=Identity
         h2 = self.backbone(v2)
         z1 = F.normalize(self.projector(self.split.ssl(h1)), dim=1)
         z2 = F.normalize(self.projector(self.split.ssl(h2)), dim=1)
-        return ModelOutput(ssl_loss=self.criterion(z1, z2), ssl_acc=0.0, h1=h1, h2=h2)
+        loss = self.criterion(z1, z2)
+
+        decov_value = 0.0
+        if self.decov is not None:
+            decov = 0.5 * (self.decov(z1) + self.decov(z2))
+            loss = loss + self.decov_lambda * decov
+            decov_value = decov.item()
+
+        return ModelOutput(ssl_loss=loss, ssl_acc=0.0, h1=h1, h2=h2,
+                           decov_loss=decov_value)

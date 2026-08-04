@@ -1,0 +1,27 @@
+# posonly_geom + the decorrelation safety net.
+#
+# The fallback arm. If the clean positives-only runs collapse dimensionally, the
+# headline claim ("transformation prediction can replace the anti-collapse
+# machinery") fails -- but the weaker question survives and is still worth an
+# answer: HOW LITTLE regularization does transformation prediction need? This
+# variant is the first rung; sweep the rest with a config overlay rather than more
+# files, e.g.  --config-overlay <(echo 'align_decov_lambda: 100').
+#
+# Read against posonly_geom, which is identical except for this one number, so any
+# difference is the regularizer's doing.
+#
+# On lambda = 10: the penalty is a correlation-matrix off-diagonal, measured at
+# 0.004 at full rank (its sampling-noise floor), 0.12 at rank 8 and 0.50 at rank 2
+# on D = N = 256. At 10 a healthy state pays 0.04 -- negligible beside an alignment
+# term of order 1 -- while a rank-8 collapse pays 1.2, which is comparable to it.
+# Below ~1 the term is inside the noise floor and does nothing.
+#
+# NOTE it cannot prevent COMPLETE collapse: a constant representation standardizes
+# to noise and scores 0.0000, the penalty's best value. That case is the prediction
+# head's job. Do not read a low Decov number as good news on its own -- read erank.
+rel_regress: true
+rel_lambda: 0.5
+aug_sharing: true
+p_same: 0.0
+regress_factors: [crop, rotation, hflip]
+align_decov_lambda: 10.0

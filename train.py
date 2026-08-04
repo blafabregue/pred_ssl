@@ -176,6 +176,10 @@ def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, c
         out = model(v1, v2, *extra_keys)
         loss = out.ssl_loss
         pred_loss_val = 0.0
+        # Frameworks with an internal decorrelation regularizer (posonly) report its
+        # raw value; it is already weighted into ssl_loss, so only the meter is fed.
+        if out.decov_loss:
+            decov_losses.update(out.decov_loss, v1.size(0))
 
         if essl and rel_head is not None:
             # E-SSL: classify the transformation(s) applied to a SEPARATE small crop,
@@ -264,7 +268,8 @@ def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, c
         if i % cfg["print_freq"] == 0:
             dt = time.time() - end
             end = time.time()
-            decov_part = f"  Decov {decov_losses.avg:.4f}" if use_decov else ""
+            decov_part = (f"  Decov {decov_losses.avg:.4f}"
+                          if use_decov or decov_losses.count else "")
             print(f"  Epoch [{epoch + 1}][{i}/{len(loader)}]  "
                   f"Loss {losses.avg:.4f}  SSL {ssl_losses.avg:.4f}  "
                   f"Pred {pred_losses.avg:.4f}{decov_part}  ({dt:.1f}s)", flush=True)

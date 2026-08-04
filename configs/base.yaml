@@ -45,6 +45,12 @@ feat_split: false
 split_ratios: [0.5, 0.25, 0.25]  # [vanilla, common, rel] fractions of feat_dim, sum = 1
 split_decov_lambda: 0.0          # >0 adds a cross-correlation penalty between the two EXCLUSIVE blocks
 
+# Decorrelation regularizer on the positives-only projector output (framework posonly).
+# 0 = off, which is what the headline claim requires. Distinct from split_decov_lambda
+# above: that one decorrelates the two blocks of a SPLIT latent, this one decorrelates
+# the dimensions of z with itself, to hold the rank up.
+align_decov_lambda: 0.0
+
 # AugSelf baseline (experiment augself): standard augmentation + a head regressing the
 # two views' augmentation-parameter difference. Mutually exclusive with the relational
 # head; rel_lambda then weights the AugSelf loss.

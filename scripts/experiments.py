@@ -68,6 +68,8 @@ VARIANTS = {
     "posonly_geom":  ("posonly_geom",  "positives-only + geometric factors (crop/rotation/hflip)"),
     "posonly_color": ("posonly_color", "positives-only + photometric factors (falsification arm)"),
     "posonly_all":   ("posonly_all",   "positives-only + all nine factors"),
+    "posonly_geom_decov": ("posonly_geom_decov",
+                           "posonly_geom + decorrelation safety net (lambda=10)"),
 }
 
 # Default matrix: everything the paper reports, so `slurm_status` shows the true
@@ -83,6 +85,7 @@ DEFAULT_VARIANTS = [
     "posonly_geom",      # positives-only study (generated for `posonly` only)
     "posonly_color",     # its falsification arm
     "posonly_all",
+    "posonly_geom_decov",  # its fallback arm, if the clean runs collapse
 ]
 
 DEFAULT_FRAMEWORKS = ["simclr", "moco", "byol", "looc", "vicreg", "posonly"]
@@ -101,6 +104,7 @@ VARIANT_FRAMEWORKS = {
     "posonly_geom": {"posonly"},
     "posonly_color": {"posonly"},
     "posonly_all": {"posonly"},
+    "posonly_geom_decov": {"posonly"},
 }
 
 # Frameworks that only take certain variants. `posonly` exists to ask whether
@@ -109,7 +113,8 @@ VARIANT_FRAMEWORKS = {
 # SUPPOSED to collapse -- without it a non-collapse proves nothing), and `augself`
 # runs the same question with AugSelf's own crop+colour target.
 FRAMEWORK_VARIANTS = {
-    "posonly": {"baseline", "augself", "posonly_geom", "posonly_color", "posonly_all"},
+    "posonly": {"baseline", "augself", "posonly_geom", "posonly_color", "posonly_all",
+                "posonly_geom_decov"},
 }
 
 

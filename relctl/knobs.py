@@ -29,7 +29,7 @@ EXPERIMENTS = ["baseline", "augself", "essl", "extended_essl", "relpred",
                "relpred_lambda0", "relpred_decoupled", "relpred_proj3", "relpred_proj6",
                "relpred_regress", "relpred_split", "relpred_split_80_10_10",
                "relpred_split_45_45_10",
-               "posonly_geom", "posonly_color", "posonly_all"]
+               "posonly_geom", "posonly_color", "posonly_all", "posonly_geom_decov"]
 
 # Canonical factor order (mirror of data/transforms.py FACTORS). The head emits one
 # logit per factor; this set is owned by the data layer and is not a tunable knob.
@@ -160,6 +160,13 @@ KNOBS = [
          doc="Barlow Twins projector output dim (paper: 8192 at batch 2048; 1024 at batch 256)."),
     Knob("barlow_lambd", "model", "train", "float", 0.0051, valid=(0.0, None), fw_scope="barlow",
          doc="Weight of the off-diagonal (redundancy-reduction) term; the paper's 0.0051."),
+    Knob("align_decov_lambda", "model", "train", "float", 0.0, valid=(0.0, None),
+         fw_scope="posonly",
+         coupling="MUST be 0 for the headline claim; >0 makes the model VICReg's "
+                  "covariance term plus an auxiliary head. Useful span 1-100: the "
+                  "penalty's noise floor at full rank is ~0.004",
+         doc="Decorrelation penalty on the positives-only projector output, to hold the "
+             "rank up. Cannot prevent COMPLETE collapse (a constant scores 0)."),
     Knob("align_proj_bn", "model", "train", "bool", True, fw_scope="posonly",
          coupling="BatchNorm has been argued to supply an implicit contrastive signal; "
                   "turn it OFF to check that a non-collapse is really due to the "
@@ -375,7 +382,7 @@ FRAMEWORK_KNOBS = {
                "vicreg_sim_coeff", "vicreg_std_coeff", "vicreg_cov_coeff"],
     "barlow": ["barlow_expander_layers", "barlow_expander_dim", "barlow_proj_dim",
                "barlow_lambd"],
-    "posonly": ["proj_hidden_dim", "proj_dim", "align_proj_bn"],
+    "posonly": ["proj_hidden_dim", "proj_dim", "align_proj_bn", "align_decov_lambda"],
 }
 
 
