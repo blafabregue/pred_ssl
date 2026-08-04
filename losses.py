@@ -120,6 +120,24 @@ class SplitDecovLoss(nn.Module):
         return (c ** 2).mean()
 
 
+class RelRegressLoss(nn.Module):
+    """Masked l2 loss on the normalized parameter difference (relpred_regress).
+
+    The regression counterpart of RelPairLoss: same views, same factors, same
+    masking rule, but the target is the signed difference of the two views'
+    normalized parameters rather than a per-factor same/different label. Averaging
+    over unmasked entries only, so masked factors contribute nothing.
+
+    Unlike BCE, this objective does not saturate -- the property that made AugSelf's
+    head diverge at large learning rates -- so runs using it may need grad_clip.
+    """
+
+    def forward(self, pred, target, mask):
+        se = (pred - target).pow(2) * mask
+        denom = mask.sum().clamp(min=1.0)
+        return se.sum() / denom
+
+
 class BarlowTwinsLoss(nn.Module):
     """Barlow Twins loss (Zbontar et al., 2021).
 

@@ -16,10 +16,18 @@ import torch.nn as nn
 
 
 class RelHead(nn.Module):
+    """Same/different head. ``symmetric=False`` switches to the ordered
+    concatenation ``[h1, h2]``, which is required whenever the target is
+    ANTI-symmetric under view swap -- as a signed parameter difference is. A
+    symmetric combination cannot represent such a target at all, so the
+    relpred_regress ablation must use the ordered form or it would be crippled by
+    construction rather than by its objective.
+    """
 
-    def __init__(self, feat_dim, num_factors=9, hidden=2048):
+    def __init__(self, feat_dim, num_factors=9, hidden=2048, symmetric=True):
         super().__init__()
         self.num_factors = num_factors
+        self.symmetric = symmetric
         self.mlp = nn.Sequential(
             nn.Linear(2 * feat_dim, hidden),
             nn.LayerNorm(hidden),
@@ -31,5 +39,6 @@ class RelHead(nn.Module):
         )
 
     def forward(self, h1, h2):
-        x = torch.cat([h1 + h2, (h1 - h2).abs()], dim=1)  # (N, 2*feat_dim)
+        x = (torch.cat([h1 + h2, (h1 - h2).abs()], dim=1) if self.symmetric
+             else torch.cat([h1, h2], dim=1))              # (N, 2*feat_dim)
         return self.mlp(x)                                 # (N, num_factors)

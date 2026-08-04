@@ -366,7 +366,14 @@ class GaussianBlur:
 # ---------------------------------------------------------------------------
 
 class RelPairTransform:
-    """Returns (view1, view2, labels[9], mask[9]) with per-factor sharing."""
+    """Returns (view1, view2, labels[9], mask[9]) with per-factor sharing.
+
+    With ``regress=True`` the same views and the same sampling are kept, but the
+    target becomes the normalized parameter DIFFERENCE (REGRESS_TOTAL scalars)
+    instead of the per-factor same/different label. This is the relpred_regress
+    ablation: it isolates the target function, holding the views, the factor set
+    and the head capacity fixed.
+    """
 
     def __init__(
         self,
@@ -379,7 +386,9 @@ class RelPairTransform:
         p=None,
         mean=MEAN,
         std=STD,
+        regress=False,
     ):
+        self.regress = regress
         self.p_same = p_same
         self.color_strength = color_strength
         self.delta = delta if delta is not None else dict(DEFAULT_DELTA)
@@ -406,7 +415,61 @@ class RelPairTransform:
         v2 = apply_pipeline(img, p2, crop_box=None, scale=self.crop_scale,
                             out_size=self.out_size, mean=self.mean, std=self.std)
         mask = compute_mask(p1, p2)
+        if self.regress:
+            kw = dict(color_strength=self.color_strength, img_size=img.size)
+            target = normalize_params(p1, **kw) - normalize_params(p2, **kw)
+            return (v1, v2, torch.from_numpy(target),
+                    torch.from_numpy(expand_mask(mask)))
         return v1, v2, torch.from_numpy(labels), torch.from_numpy(mask)
+
+
+# --- regression target over the same factors (relpred_regress) --------------
+# Number of scalars each factor contributes to the parameter vector. All factors are
+# a single scalar except the crop, which carries four (centre and extent), as in
+# AugSelf. Total: 12.
+REGRESS_DIMS = {"rotation": 1, "hflip": 1, "brightness": 1, "contrast": 1,
+                "saturation": 1, "hue": 1, "grayscale": 1, "blur": 1, "crop": 4}
+REGRESS_TOTAL = sum(REGRESS_DIMS[f] for f in FACTORS)
+
+
+def normalize_params(params, color_strength=1.0, img_size=(256, 256)):
+    """Per-factor parameters mapped to [0, 1], concatenated in FACTORS order.
+
+    The regression target is the difference of two such vectors, which lies in
+    [-1, 1]. Note what the mapping costs for factors that are not naturally
+    ordered: rotation is cyclic, so 0 and 270 degrees are adjacent yet land at
+    opposite ends of the scale -- an artefact the same/different target does not
+    have, and one reason a regression objective is awkward on this factor set.
+    """
+    s = color_strength
+    lo, hi = 1.0 - 0.4 * s, 1.0 + 0.4 * s
+    hue_lim = 0.1 * s
+    width, height = img_size
+    i, j, h, w = params["crop"]
+    out = []
+    for f in FACTORS:
+        if f == "rotation":
+            out.append(ROT_ANGLES.index(params[f]) / (len(ROT_ANGLES) - 1))
+        elif f in ("hflip", "grayscale"):
+            out.append(float(bool(params[f])))
+        elif f == "hue":
+            out.append((params[f] + hue_lim) / (2 * hue_lim))
+        elif f == "blur":
+            out.append(params[f] / SIGMA_RANGE[1])
+        elif f == "crop":
+            out += [(i + h / 2.0) / height, (j + w / 2.0) / width,
+                    h / height, w / width]
+        else:                                   # brightness, contrast, saturation
+            out.append((params[f] - lo) / (hi - lo))
+    return np.array(out, dtype=np.float32)
+
+
+def expand_mask(mask):
+    """Per-factor mask (F,) -> per-scalar mask (REGRESS_TOTAL,)."""
+    out = []
+    for f, m in zip(FACTORS, mask):
+        out += [m] * REGRESS_DIMS[f]
+    return np.array(out, dtype=np.float32)
 
 
 # --- E-SSL per-view targets -------------------------------------------------
@@ -826,6 +889,7 @@ def build_transform(cfg):
             delta=cfg.get("delta"),
             blur_mode=cfg.get("blur_mode", "sigma"),
             crop_scale=cfg.get("crop_scale", (0.2, 1.0)),
+            regress=cfg.get("rel_regress", False),
         )
     return StandardTwoViewTransform(
         use_rotation=cfg.get("use_rotation", False),

@@ -1,0 +1,24 @@
+# relpred_regress -- the ablation that isolates the TARGET FUNCTION.
+#
+# The comparison against AugSelf confounds three things at once: the target
+# (regression on a parameter difference vs binary same/different with margins), the
+# factor set (crop+colour vs our nine), and the view distribution (independent vs
+# per-factor sharing). This variant holds the last two fixed at relpred's settings
+# and changes only the target, so any difference is attributable to the objective.
+#
+# Kept identical to relpred: the views and their per-factor shared/different
+# sampling, the nine factors, the masking rule, the head capacity, lambda.
+# Changed:
+#   - the target is the normalized parameter difference (12 scalars: one per factor,
+#     four for the crop) under a masked l2 loss;
+#   - the head reads the ORDERED concatenation [h1, h2] rather than the symmetric
+#     combination. This is not a free choice: a signed difference is antisymmetric
+#     under view swap, so a symmetric head could not represent it and the ablation
+#     would fail for the wrong reason.
+#
+# grad_clip is enabled because an l2 target does not saturate; this is the same
+# instability that made AugSelf's head diverge at these learning rates.
+rel_regress: true
+rel_lambda: 0.5
+aug_sharing: true
+grad_clip: 10.0

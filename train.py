@@ -33,7 +33,8 @@ from pred_ssl.data.loader import build_pretrain_loader  # noqa: E402
 from pred_ssl.data.transforms import FACTORS, essl_num_classes  # noqa: E402
 from pred_ssl.models.essl_head import ESSLHead  # noqa: E402
 from pred_ssl.eval.knn import build_knn_monitor  # noqa: E402
-from pred_ssl.losses import AugSelfLoss, RelPairLoss, SplitDecovLoss  # noqa: E402
+from pred_ssl.data.transforms import REGRESS_TOTAL  # noqa: E402
+from pred_ssl.losses import AugSelfLoss, RelPairLoss, RelRegressLoss, SplitDecovLoss  # noqa: E402
 from pred_ssl.models.augself_head import AUGSELF_DIM, AUGSELF_GROUPS, AugSelfHead  # noqa: E402
 from pred_ssl.models.frameworks import backbone_state_dict, build_model, encode_features  # noqa: E402
 from pred_ssl.models.rel_head import RelHead  # noqa: E402
@@ -136,6 +137,7 @@ def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, c
     use_rel = rel_head is not None and cfg["rel_lambda"] > 0 and not (augself or essl)
     decoupled = cfg.get("rel_decoupled", False)
     looc_multiview = cfg.get("framework") == "looc" and cfg.get("full_multiview", False)
+    rel_regress = cfg.get("rel_regress", False)
     grad_clip = cfg.get("grad_clip", 0.0)
     clip_params = list(model.parameters())
     if rel_head is not None:
@@ -215,13 +217,18 @@ def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, c
             # With the latent split the head only sees the [common | rel] slice.
             rel_logits = (rel_head(split.rel(f1), split.rel(f2)) if split is not None
                           else rel_head(f1, f2))
-            rel_loss, acc_pct, active = rel_criterion(rel_logits, labels, mask)
+            if rel_regress:
+                rel_loss = rel_criterion(rel_logits, labels, mask)
+                acc_pct, active = None, None
+            else:
+                rel_loss, acc_pct, active = rel_criterion(rel_logits, labels, mask)
             loss = loss + cfg["rel_lambda"] * rel_loss
             pred_loss_val = rel_loss.item()
-            for f in range(len(FACTORS)):
-                a = int(active[f].item())
-                if a > 0:
-                    factor_meters[f].update(acc_pct[f].item(), a)
+            if active is not None:      # regression has no per-factor accuracy
+                for f in range(len(FACTORS)):
+                    a = int(active[f].item())
+                    if a > 0:
+                        factor_meters[f].update(acc_pct[f].item(), a)
 
             if use_decov:
                 decov = 0.5 * (decov_criterion(split.vanilla_excl(f1), split.rel_excl(f1))
@@ -371,6 +378,16 @@ def main():
         rel_criterion = AugSelfLoss().to(device)
         print(f"=> AugSelf head: groups {[g for g, _ in AUGSELF_GROUPS]}, "
               f"{AUGSELF_DIM} params, lambda={cfg['rel_lambda']}", flush=True)
+    elif cfg.get("rel_regress", False) and cfg["rel_lambda"] > 0:
+        # Ablation: same views and factors as relpred, l2 on the parameter
+        # difference. The head must read the ORDERED pair -- a signed difference is
+        # antisymmetric, which a symmetric combination cannot represent.
+        rel_head = RelHead(split.rel_dim, num_factors=REGRESS_TOTAL,
+                           hidden=cfg["rel_head_hidden"], symmetric=False).to(device)
+        rel_criterion = RelRegressLoss().to(device)
+        print(f"=> relational head: l2 regression on {REGRESS_TOTAL} normalized "
+              f"parameter differences (ordered pair), lambda={cfg['rel_lambda']}",
+              flush=True)
     elif cfg["rel_lambda"] > 0:
         rel_head = RelHead(split.rel_dim, num_factors=len(FACTORS),
                            hidden=cfg["rel_head_hidden"]).to(device)

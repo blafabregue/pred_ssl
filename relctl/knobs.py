@@ -243,6 +243,11 @@ KNOBS = [
                   "rel_lambda then weights the AugSelf loss",
          doc="AugSelf baseline (Lee et al. 2021): standard augmentation + per-augmentation "
              "3-layer MLPs regressing the two views' parameter difference (crop, colour)."),
+    Knob("rel_regress", "rel", "train", "bool", False,
+         coupling="set by experiment relpred_regress; needs grad_clip>0 (l2 does not "
+                  "saturate) and switches the head to the ordered pair",
+         doc="Target ablation: l2 on the normalized parameter difference instead of "
+             "per-factor same/different, with the views and factors unchanged."),
     Knob("essl", "rel", "train", "bool", False,
          coupling="set by experiment essl; mutually exclusive with the relational head "
                   "and with augself, rel_lambda then weights the E-SSL loss",
