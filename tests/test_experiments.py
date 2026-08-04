@@ -34,11 +34,14 @@ def _run_matrix(**env):
 def test_default_matrix_shape():
     m = _run_matrix()
     # Tie to the actual default lists so the test tracks matrix growth (extra
-    # variants/seeds) instead of a hard-coded count.
-    expected = (len(experiments.DEFAULT_FRAMEWORKS)
-                * len(experiments.DEFAULT_VARIANTS)
-                * len(experiments.DEFAULT_SEEDS))
-    assert len(m) == expected
+    # variants/seeds) instead of a hard-coded count. The matrix is a cross-product
+    # MINUS the cells the pairing rules reject, so count those out explicitly --
+    # a plain product would silently pass if `applies` stopped being called.
+    cells = sum(1 for fw in experiments.DEFAULT_FRAMEWORKS
+                for var in experiments.DEFAULT_VARIANTS
+                if experiments.applies(fw, var))
+    assert cells < len(experiments.DEFAULT_FRAMEWORKS) * len(experiments.DEFAULT_VARIANTS)
+    assert len(m) == cells * len(experiments.DEFAULT_SEEDS)
     assert len({e["tag"] for e in m}) == len(m)     # tags are unique
     e = m[0]
     assert set(e) >= {"tag", "framework", "experiment", "arch", "seed", "epochs", "save_dir", "log"}

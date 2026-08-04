@@ -256,10 +256,51 @@ def test_collapse_line_reaches_the_curves(tmp_path):
 
 def test_posonly_is_registered_in_the_matrix_and_the_knob_registry():
     from pred_ssl.relctl.knobs import EXPERIMENTS, FRAMEWORKS
-    from pred_ssl.scripts.experiments import VARIANTS
+    from pred_ssl.scripts.experiments import (DEFAULT_FRAMEWORKS, DEFAULT_VARIANTS,
+                                              VARIANTS)
     assert "posonly" in FRAMEWORKS
+    assert "posonly" in DEFAULT_FRAMEWORKS, "otherwise slurm_status never shows it"
     for v in ("posonly_geom", "posonly_color", "posonly_all"):
-        assert v in VARIANTS and v in EXPERIMENTS
+        assert v in VARIANTS and v in EXPERIMENTS and v in DEFAULT_VARIANTS
+
+
+def test_the_matrix_pairs_posonly_variants_with_their_framework_only():
+    from pred_ssl.scripts.experiments import applies
+    # against any other framework these are just relpred_regress with a masked
+    # factor set, under a name that claims otherwise
+    for fw in ("simclr", "moco", "byol", "looc", "vicreg", "barlow"):
+        assert not applies(fw, "posonly_geom")
+        assert applies(fw, "relpred")           # unrestricted variants are untouched
+    assert applies("posonly", "posonly_geom")
+    # posonly only takes the variants bearing on its question
+    assert applies("posonly", "baseline")       # the lambda=0 collapse control
+    assert applies("posonly", "augself")        # the same question, AugSelf's target
+    assert not applies("posonly", "relpred_proj6")
+
+
+def test_matrix_generates_the_expected_posonly_cells():
+    import os
+    from pred_ssl.scripts import experiments
+    saved = {k: os.environ.get(k) for k in ("FRAMEWORKS", "VARIANTS", "SEEDS")}
+    try:
+        os.environ["SEEDS"] = "1"
+        os.environ.pop("FRAMEWORKS", None)
+        os.environ.pop("VARIANTS", None)
+        tags = {e["tag"] for e in experiments.matrix()}
+        assert "posonly_posonly_color_resnet50_s1" in tags
+        assert "posonly_baseline_resnet50_s1" in tags
+        assert not any(t.startswith("simclr_posonly") for t in tags)
+        # a request that pairs to nothing must fail loudly, not submit nothing
+        os.environ["FRAMEWORKS"], os.environ["VARIANTS"] = "simclr", "posonly_geom"
+        try:
+            experiments.matrix()
+        except SystemExit as e:
+            assert "posonly" in str(e)
+        else:
+            raise AssertionError("an empty matrix must not pass silently")
+    finally:
+        for k, v in saved.items():
+            os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
 
 
 if __name__ == "__main__":
