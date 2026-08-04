@@ -26,6 +26,9 @@ EVAL_LOG=${EVAL_LOG:-./pred_ssl/logs/${TAG}.eval.log}
 IN100=${IN100:-./pred_ssl/datasets/imagenet100}
 CUB=${CUB:-./pred_ssl/datasets/cub200_prepared}
 FLOWERS=${FLOWERS:-./pred_ssl/datasets/flowers102_prepared}
+# Flowers few-shot protocol: ours (the paper's numbers, the only one extract_results
+# parses), ref (AugSelf's LBFGS + L2 sweep, comparable to their Table 3), or both.
+FEWSHOT_PROTOCOL=${FEWSHOT_PROTOCOL:-ours}
 
 cd "${SLURM_SUBMIT_DIR:-$(dirname "$0")/../..}"
 mkdir -p "$(dirname "$EVAL_LOG")"
@@ -56,6 +59,6 @@ python -m pred_ssl.eval.linear_probe --data "${CUB}" --pretrained "${CKPT}" \
     --arch "${ARCH}" --epochs "${EVAL_EPOCHS}" 2>&1 | tee -a "${EVAL_LOG}"
 echo "STEP 5: Flowers-102 Few-shot Eval" | tee -a "${EVAL_LOG}"
 python -m pred_ssl.eval.few_shot --data "${FLOWERS}" --pretrained "${CKPT}" \
-    --arch "${ARCH}" 2>&1 | tee -a "${EVAL_LOG}"
+    --arch "${ARCH}" --protocol "${FEWSHOT_PROTOCOL}" 2>&1 | tee -a "${EVAL_LOG}"
 
 echo "EVAL_DONE $(date)" | tee -a "${EVAL_LOG}"
