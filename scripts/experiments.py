@@ -69,7 +69,7 @@ DEFAULT_VARIANTS = [
 ]
 
 DEFAULT_FRAMEWORKS = ["simclr", "moco", "byol", "looc", "vicreg"]
-DEFAULT_SEEDS = ["1", "2", "3", "4", "5"]
+DEFAULT_SEEDS = ["1", "2"]
 
 
 def _env_list(name, default):

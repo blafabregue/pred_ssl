@@ -7,7 +7,7 @@
 #SBATCH --time=24:00:00
 #SBATCH --output=pred_ssl/logs/%x_%j.out
 #SBATCH --error=pred_ssl/logs/%x_%j.err
-#SBATCH --constraint="gpuh100|gpua100|gpuh200"
+#SBATCH --constraint="gpuh100|gpua100|gpuh200|gpua40|gpul40s"
 #
 # Evaluate ONE finished pretraining (its final checkpoint): IN-100 linear, IN-100
 # rotation, CUB-200 linear, Flowers-102 few-shot -> one <tag>.eval.log ending in the
