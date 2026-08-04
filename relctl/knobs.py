@@ -24,10 +24,12 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 
-FRAMEWORKS = ["simclr", "moco", "byol", "looc", "vicreg", "barlow"]
-EXPERIMENTS = ["baseline", "augself", "relpred", "relpred_lambda0", "relpred_decoupled",
-               "relpred_proj3", "relpred_proj6", "relpred_split",
-               "relpred_split_80_10_10", "relpred_split_45_45_10"]
+FRAMEWORKS = ["simclr", "moco", "byol", "looc", "vicreg", "barlow", "posonly"]
+EXPERIMENTS = ["baseline", "augself", "essl", "extended_essl", "relpred",
+               "relpred_lambda0", "relpred_decoupled", "relpred_proj3", "relpred_proj6",
+               "relpred_regress", "relpred_split", "relpred_split_80_10_10",
+               "relpred_split_45_45_10",
+               "posonly_geom", "posonly_color", "posonly_all"]
 
 # Canonical factor order (mirror of data/transforms.py FACTORS). The head emits one
 # logit per factor; this set is owned by the data layer and is not a tunable knob.
@@ -158,6 +160,11 @@ KNOBS = [
          doc="Barlow Twins projector output dim (paper: 8192 at batch 2048; 1024 at batch 256)."),
     Knob("barlow_lambd", "model", "train", "float", 0.0051, valid=(0.0, None), fw_scope="barlow",
          doc="Weight of the off-diagonal (redundancy-reduction) term; the paper's 0.0051."),
+    Knob("align_proj_bn", "model", "train", "bool", True, fw_scope="posonly",
+         coupling="BatchNorm has been argued to supply an implicit contrastive signal; "
+                  "turn it OFF to check that a non-collapse is really due to the "
+                  "auxiliary head",
+         doc="BatchNorm inside the positives-only projector."),
     Knob("vicreg_sim_coeff", "model", "train", "float", 25.0, valid=(0.0, None), fw_scope="vicreg",
          doc="VICReg invariance (MSE) term weight."),
     Knob("vicreg_std_coeff", "model", "train", "float", 25.0, valid=(0.0, None), fw_scope="vicreg",
@@ -244,10 +251,16 @@ KNOBS = [
          doc="AugSelf baseline (Lee et al. 2021): standard augmentation + per-augmentation "
              "3-layer MLPs regressing the two views' parameter difference (crop, colour)."),
     Knob("rel_regress", "rel", "train", "bool", False,
-         coupling="set by experiment relpred_regress; needs grad_clip>0 (l2 does not "
-                  "saturate) and switches the head to the ordered pair",
+         coupling="set by experiments relpred_regress and posonly_*; switches the head to "
+                  "the ordered pair (a signed difference is antisymmetric)",
          doc="Target ablation: l2 on the normalized parameter difference instead of "
-             "per-factor same/different, with the views and factors unchanged."),
+             "per-factor same/different, with the views and factors unchanged. Bounded "
+             "by a tanh as in AugSelf's released code, so no gradient clipping."),
+    Knob("regress_factors", "rel", "train", "list_str", [],
+         coupling="empty = all nine; the axis of the posonly study (geometric factors "
+                  "demand view correspondence, photometric ones do not)",
+         doc="Restrict which factors rel_regress supervises, by masking the others out "
+             "of the target. Empty selects every factor."),
     Knob("essl", "rel", "train", "bool", False,
          coupling="set by experiment essl; mutually exclusive with the relational head "
                   "and with augself, rel_lambda then weights the E-SSL loss",
@@ -362,6 +375,7 @@ FRAMEWORK_KNOBS = {
                "vicreg_sim_coeff", "vicreg_std_coeff", "vicreg_cov_coeff"],
     "barlow": ["barlow_expander_layers", "barlow_expander_dim", "barlow_proj_dim",
                "barlow_lambd"],
+    "posonly": ["proj_hidden_dim", "proj_dim", "align_proj_bn"],
 }
 
 

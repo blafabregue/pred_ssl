@@ -32,6 +32,7 @@ from pred_ssl.ckpt import AsyncCheckpointSaver, snapshot_to_cpu  # noqa: E402
 from pred_ssl.data.loader import build_pretrain_loader  # noqa: E402
 from pred_ssl.data.transforms import FACTORS, essl_num_classes  # noqa: E402
 from pred_ssl.models.essl_head import ESSLHead  # noqa: E402
+from pred_ssl.collapse import format_stats  # noqa: E402
 from pred_ssl.eval.knn import build_knn_monitor  # noqa: E402
 from pred_ssl.data.transforms import REGRESS_TOTAL  # noqa: E402
 from pred_ssl.losses import AugSelfLoss, RelPairLoss, RelRegressLoss, SplitDecovLoss  # noqa: E402
@@ -278,7 +279,8 @@ def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, c
 def main():
     parser = argparse.ArgumentParser(description="pred_ssl unified pretraining")
     parser.add_argument("--framework", required=True,
-                        choices=["simclr", "moco", "byol", "looc", "vicreg", "barlow"])
+                        choices=["simclr", "moco", "byol", "looc", "vicreg", "barlow",
+                                 "posonly"])
     parser.add_argument("--experiment", default="relpred",
                         help="config in configs/experiment/ (baseline|relpred|"
                              "relpred_lambda0|relpred_decoupled|relpred_proj3|relpred_split|"
@@ -484,6 +486,9 @@ def _train_loop(cfg, model, rel_head, rel_criterion, optimizer, device, base_lr,
         if knn is not None and ((epoch + 1) % knn_freq == 0 or is_final):
             knn_acc = knn.evaluate(model, cfg["framework"], device)
             print(f"  KNN_Acc: {knn_acc:.2f}%  (epoch {epoch + 1})", flush=True)
+            if knn.last_collapse is not None:
+                print(f"  {format_stats(knn.last_collapse)}  (epoch {epoch + 1})",
+                      flush=True)
 
         # 'best' = highest kNN val accuracy when the monitor runs; without the monitor,
         # lowest train loss sampled on the save_freq cadence (avoids a write per epoch).

@@ -387,8 +387,13 @@ class RelPairTransform:
         mean=MEAN,
         std=STD,
         regress=False,
+        regress_factors=None,
     ):
         self.regress = regress
+        # Which factors the regression supervises (None = all nine). Resolved once:
+        # __call__ runs per image, in the loader workers.
+        self.regress_factors = regress_factors
+        self._factor_sel = factor_select_mask(regress_factors)
         self.p_same = p_same
         self.color_strength = color_strength
         self.delta = delta if delta is not None else dict(DEFAULT_DELTA)
@@ -419,7 +424,7 @@ class RelPairTransform:
             kw = dict(color_strength=self.color_strength, img_size=img.size)
             target = normalize_params(p1, **kw) - normalize_params(p2, **kw)
             return (v1, v2, torch.from_numpy(target),
-                    torch.from_numpy(expand_mask(mask)))
+                    torch.from_numpy(expand_mask(mask) * self._factor_sel))
         return v1, v2, torch.from_numpy(labels), torch.from_numpy(mask)
 
 
@@ -470,6 +475,32 @@ def expand_mask(mask):
     for f, m in zip(FACTORS, mask):
         out += [m] * REGRESS_DIMS[f]
     return np.array(out, dtype=np.float32)
+
+
+# Geometric factors need the two views put in CORRESPONDENCE to be predicted (where
+# did this crop come from, which way up is this), so they cannot be read off image
+# statistics; photometric ones largely can, from a few channel or frequency
+# moments. The distinction drives how much a transformation-prediction term forces
+# the representation to keep image content -- see models/frameworks/posonly.py.
+GEOMETRIC_FACTORS = ["crop", "rotation", "hflip"]
+PHOTOMETRIC_FACTORS = [f for f in FACTORS if f not in GEOMETRIC_FACTORS]
+
+
+def factor_select_mask(factors=None):
+    """Per-scalar 0/1 mask selecting which factors the regression supervises.
+
+    None/empty selects every factor. Applied on top of the perceptibility mask, so
+    an unselected factor is simply never supervised -- RelRegressLoss already
+    normalizes by the mask sum, so nothing else has to change.
+    """
+    if not factors:
+        return np.ones(REGRESS_TOTAL, dtype=np.float32)
+    unknown = [f for f in factors if f not in FACTORS]
+    if unknown:
+        raise ValueError(f"unknown factor(s) {unknown}; known: {FACTORS}")
+    keep = set(factors)
+    return expand_mask(np.array([1.0 if f in keep else 0.0 for f in FACTORS],
+                                dtype=np.float32))
 
 
 # --- E-SSL per-view targets -------------------------------------------------
@@ -890,6 +921,7 @@ def build_transform(cfg):
             blur_mode=cfg.get("blur_mode", "sigma"),
             crop_scale=cfg.get("crop_scale", (0.2, 1.0)),
             regress=cfg.get("rel_regress", False),
+            regress_factors=cfg.get("regress_factors"),
         )
     return StandardTwoViewTransform(
         use_rotation=cfg.get("use_rotation", False),

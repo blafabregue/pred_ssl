@@ -54,6 +54,14 @@ VARIANTS = {
                                "relpred + latent split 0.80/0.10/0.10 (vanilla-heavy)"),
     "relpred_split_45_45_10": ("relpred_split_45_45_10",
                                "relpred + latent split 0.45/0.45/0.10 (common-heavy)"),
+    # Positives-only study (FRAMEWORKS=posonly). Out of the default matrix: these
+    # only mean anything against the posonly framework, where transformation
+    # prediction is the ONLY thing opposing collapse. Read them on effective rank,
+    # not on the loss -- both failure modes make the loss go down. The baseline
+    # variant doubles as the lambda=0 control and is expected to collapse.
+    "posonly_geom":  ("posonly_geom",  "positives-only + geometric factors (crop/rotation/hflip)"),
+    "posonly_color": ("posonly_color", "positives-only + photometric factors (falsification arm)"),
+    "posonly_all":   ("posonly_all",   "positives-only + all nine factors"),
 }
 
 # Default matrix: everything the paper reports, so `slurm_status` shows the true

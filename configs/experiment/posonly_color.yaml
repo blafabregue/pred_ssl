@@ -1,0 +1,21 @@
+# Positives-only + transformation prediction over the PHOTOMETRIC factors only.
+#
+# The falsification arm. Brightness, contrast, saturation, hue, grayscale and blur
+# differences are readable from a few channel and frequency moments, so a handful
+# of dimensions encoding image statistics satisfies this head completely while
+# carrying no content. If the correspondence account is right, this is the variant
+# that dimensionally collapses: effective rank should fall while the auxiliary loss
+# keeps dropping, which is exactly the failure a loss curve alone would hide.
+#
+# A collapse here is a RESULT, not a failed run. clean_failed_runs.py keys on a
+# non-finite loss, and a collapsed run's loss is finite and low, so it is safe from
+# the automatic cleanup -- but not from someone reading the kNN column and assuming
+# the run broke.
+#
+# aug_sharing selects the relational loader (the one emitting the parameter target);
+# p_same: 0.0 means nothing is actually shared. See posonly_all.yaml for why.
+rel_regress: true
+rel_lambda: 0.5
+aug_sharing: true
+p_same: 0.0
+regress_factors: [brightness, contrast, saturation, hue, grayscale, blur]

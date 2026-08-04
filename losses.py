@@ -46,6 +46,23 @@ class BYOLLoss(nn.Module):
         return (loss1 + loss2).mean()
 
 
+class AlignmentLoss(nn.Module):
+    """BYOL's regression term alone: 2 - 2*<z1, z2> on L2-normalized embeddings.
+
+    This is the positives-only objective, with none of the machinery that normally
+    keeps it from collapsing -- no negatives, no predictor, no momentum target, no
+    stop-gradient. On its own its minimum IS the constant solution. It is only
+    usable next to a term that a collapsed representation cannot satisfy; see
+    models/frameworks/posonly.py for what that term has to do.
+
+    Symmetric in its two arguments, so unlike BYOLLoss there is nothing to
+    symmetrize: swapping the views gives the same value.
+    """
+
+    def forward(self, z1, z2):
+        return (2 - 2 * (z1 * z2).sum(dim=1)).mean()
+
+
 def _off_diagonal(x):
     """Flattened off-diagonal entries of a square matrix (reference implementation).
 

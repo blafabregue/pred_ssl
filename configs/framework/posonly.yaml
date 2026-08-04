@@ -1,0 +1,19 @@
+# Positives-only: BYOL's alignment term with none of its anti-collapse machinery.
+# No negatives, no predictor, no momentum target, no stop-gradient. Whatever keeps
+# the representation from collapsing has to come from the auxiliary head, so this
+# framework is only meaningful with rel_lambda > 0 -- except for the deliberate
+# lambda=0 control, which is SUPPOSED to collapse.
+#
+# Optimizer settings mirror byol.yaml so that the difference against BYOL is the
+# machinery and not the schedule.
+framework: posonly
+lr: 0.3
+lr_scale_by_batch: true
+lr_schedule: cosine
+proj_hidden_dim: 4096
+proj_dim: 256
+
+# BatchNorm in the projector is the confound to keep in mind when reading any
+# "it did not collapse" result: BN has been argued to supply an implicit
+# contrastive signal on its own. Set false to rerun the control without it.
+align_proj_bn: true

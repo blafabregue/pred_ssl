@@ -180,6 +180,12 @@ class ConfigModel:
                     "a single view); choose from %s" % (bad, sorted(allowed)))
             if not v:
                 raise ValidationError("essl_factors must name at least one factor")
+        if kn.key == "regress_factors":
+            from ..data.transforms import FACTORS
+            unknown = [f for f in v if f not in FACTORS]
+            if unknown:
+                raise ValidationError("unknown factor(s) %s; choose from %s"
+                                      % (unknown, FACTORS))
         if kn.key == "looc_augs":
             from ..data.transforms import LOOC_GROUPS
             unknown = [g for g in v if g not in LOOC_GROUPS]

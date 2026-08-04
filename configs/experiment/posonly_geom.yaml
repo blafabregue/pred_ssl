@@ -1,0 +1,16 @@
+# Positives-only + transformation prediction over the GEOMETRIC factors only.
+#
+# The predicted arm of the augmentation sweep. Crop, rotation and flip differences
+# cannot be recovered from image statistics: saying "view 2 is shifted right" or
+# "rotated 90 degrees" requires putting the two views in correspondence, which
+# requires representing their content. If the anti-collapse pressure of a
+# transformation-prediction term really comes from how much correspondence it
+# demands, this variant should hold up best -- highest effective rank, highest kNN.
+#
+# aug_sharing selects the relational loader (the one emitting the parameter target);
+# p_same: 0.0 means nothing is actually shared. See posonly_all.yaml for why.
+rel_regress: true
+rel_lambda: 0.5
+aug_sharing: true
+p_same: 0.0
+regress_factors: [crop, rotation, hflip]

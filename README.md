@@ -158,10 +158,47 @@ env vars for the scripts.
 - **Curves (one run)**: `python -m pred_ssl.scripts.plot_curves pred_ssl/logs/<tag>.log
   pred_ssl/logs/<tag>.eval.log` → per-epoch CSV (+ PNG if matplotlib is installed)
   of pretrain losses, `KNN_Acc`, and each linear probe's per-epoch Val loss/acc.
+- **Collapse diagnostics** (`collapse.py`, logged beside `KNN_Acc` at no extra cost —
+  they reuse the kNN feature bank): `Collapse: std_ratio … erank … erank_ratio …`.
+  `std_ratio` (≈1 healthy, →0 collapsed) catches a constant representation;
+  `erank`, the effective rank of the feature covariance, catches a low-rank one.
+  **Both are needed**: `erank` is scale-invariant, so a point collapse with isotropic
+  noise still scores high; `std_ratio` is per-dimension, so a 3-dimensional code
+  spread over the sphere still scores high. Which one drops tells you which failure.
 - **Progression (one plot per model, all seeds)**:
   `python -m pred_ssl.scripts.plot_progression --logs-dir pred_ssl/logs --out-dir pred_ssl/curves`
   → one figure per (framework, variant) with the per-epoch mean and a ±1 std band
   over seeds (kNN accuracy + loss); `--metrics`, `--show-seeds`, `--min-seeds` tune it.
+
+## Positives-only study (`framework: posonly`)
+Can predicting the augmentation replace *all* the anti-collapse machinery? `posonly`
+is BYOL's alignment term with no negatives, no predictor, no momentum target and no
+stop-gradient, so the auxiliary head is the only thing opposing collapse.
+
+It survives complete collapse for a clear reason: at `h1 = h2` the head sees one
+input and can emit one vector, while its target `ω1 − ω2` varies. The threat is
+*dimensional* collapse instead — ω is only 8–12 dimensional, and `h = [content, ω]`
+and `h = [0, ω]` pay the same loss, so content is a flat direction that weight decay
+shrinks. What pushes back is that geometric factors (crop, rotation, flip) can only
+be predicted by putting the two views in correspondence, which needs real features,
+while photometric ones are readable from a few channel and frequency moments. Hence
+the three variants, which differ *only* in `regress_factors`:
+
+| variant | predicted factors | expectation |
+|---|---|---|
+| `posonly_geom` | crop, rotation, hflip | holds up best |
+| `posonly_all` | all nine | intermediate |
+| `posonly_color` | the six photometric | falsification arm: should collapse dimensionally |
+
+```bash
+FRAMEWORKS=posonly VARIANTS="posonly_geom posonly_color posonly_all baseline" bash pred_ssl/scripts/slurm_submit.sh
+```
+`baseline` on `posonly` is the **λ=0 control** and is *supposed* to collapse — without
+it, a non-collapse proves nothing. Note the confound it also has to settle: projector
+BatchNorm has been argued to supply an implicit contrastive signal on its own, so
+rerun the control with `align_proj_bn: false` before crediting the auxiliary head.
+Read these runs on `erank`, never on the loss: **both** failure modes make the loss
+go down.
 
 ## Tests
 ```bash

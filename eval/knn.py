@@ -22,6 +22,7 @@ import torch.nn.functional as F
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 
+from ..collapse import collapse_stats
 from ..models.frameworks import encode_features
 
 MEAN = [0.485, 0.456, 0.406]
@@ -57,6 +58,11 @@ class KnnMonitor:
         self.num_classes = num_classes
         self.k = k
         self.temp = temp
+        # Collapse diagnostics from the last evaluate(), or None before the first.
+        # Kept off the return value so the (float) contract every caller already
+        # relies on is untouched; the bank features they are computed from are
+        # extracted for the kNN anyway, so this costs one eigendecomposition.
+        self.last_collapse = None
 
     @torch.no_grad()
     def _extract(self, model, framework, loader, device):
@@ -74,6 +80,7 @@ class KnnMonitor:
         model.eval()
         try:
             bank, bank_y = self._extract(model, framework, self.bank_loader, device)
+            self.last_collapse = collapse_stats(bank)
             correct = total = 0
             for x, y in self.val_loader:
                 f = encode_features(model, framework, x.to(device, non_blocking=True))

@@ -59,6 +59,10 @@ essl_crop_size: 112            # side of the predictor crop, in pixels
 # relpred_regress ablation: same views/factors/head as relpred, but the target is the
 # normalized parameter difference under an l2 loss instead of same/different.
 rel_regress: false
+regress_factors: []            # which factors rel_regress supervises ([] = all nine).
+                               # The axis of the positives-only study: geometric factors
+                               # need the views put in correspondence to be predicted,
+                               # photometric ones are readable from image statistics.
 essl_factors: [rotation]       # predicted factors; >1 is our extended_essl variant
 essl_bins: 4                   # bins for continuous factors (their "four-fold blur")
 

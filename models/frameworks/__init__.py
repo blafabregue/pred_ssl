@@ -19,6 +19,7 @@ TRAINABLE_BACKBONE_ATTR = {
     "looc": "backbone_q",
     "vicreg": "backbone",
     "barlow": "backbone",
+    "posonly": "backbone",
 }
 
 
@@ -42,6 +43,9 @@ def build_model(cfg):
     if fw == "barlow":
         from .barlow import BarlowTwinsModel
         return BarlowTwinsModel(cfg)
+    if fw == "posonly":
+        from .posonly import PosOnlyModel
+        return PosOnlyModel(cfg)
     raise ValueError(f"unknown framework: {fw}")
 
 

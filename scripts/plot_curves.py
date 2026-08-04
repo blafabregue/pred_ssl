@@ -24,11 +24,16 @@ import re
 _PRE = re.compile(r"Epoch \[(\d+)/\d+\]\s+Loss:\s+([\d.]+)(?:\s+SSL_Loss:\s+([\d.]+))?"
                   r"\s+Pred_Loss:\s+([\d.]+)\s+Pred_Acc:\s+([\d.]+)%")
 _KNN = re.compile(r"KNN_Acc:\s+([\d.]+)%\s+\(epoch (\d+)\)")
+# Collapse diagnostics (pred_ssl/collapse.py), emitted next to KNN_Acc. erank is the
+# one to watch on positives-only runs: it falls while the loss keeps improving.
+_COLLAPSE = re.compile(r"Collapse:\s+std_ratio\s+([\d.]+)\s+erank\s+([\d.]+)\s+"
+                       r"erank_ratio\s+([\d.]+)\s+\(epoch (\d+)\)")
 _EVAL = re.compile(r"Epoch \[(\d+)/\d+\]\s+Train Loss:\s+([\d.]+)\s+Train Acc@1:\s+([\d.]+)%"
                    r"\s+Val Loss:\s+([\d.]+)\s+Val Acc@1:\s+([\d.]+)%\s+Val Acc@5:\s+([\d.]+)%")
 _TASK = re.compile(r"Linear Evaluation:\s+(.+)")
 
 FIELDS = ["task", "epoch", "loss", "ssl_loss", "pred_loss", "pred_acc", "knn_acc",
+          "std_ratio", "erank", "erank_ratio",
           "train_loss", "train_acc1", "val_loss", "val_acc1", "val_acc5"]
 
 
@@ -55,6 +60,11 @@ def parse_curves(path):
             m = _KNN.search(line)
             if m:
                 row("pretrain", int(m.group(2)))["knn_acc"] = m.group(1)
+                continue
+            m = _COLLAPSE.search(line)
+            if m:
+                r = row("pretrain", int(m.group(4)))
+                r["std_ratio"], r["erank"], r["erank_ratio"] = m.groups()[:3]
                 continue
             m = _EVAL.search(line)
             if m and eval_task:
@@ -89,7 +99,12 @@ def plot_png(tasks, out_png, title):
         return ([p[0] for p in pts], [p[1] for p in pts]) if pts else (None, None)
 
     eval_tasks = [t for t in tasks if t != "pretrain"]
-    fig, (ax_l, ax_a) = plt.subplots(1, 2, figsize=(13, 4.5))
+    # The collapse panel only appears when the run logged the diagnostics, so plots
+    # from before they existed keep their two-panel layout.
+    has_collapse = any(r.get("erank") for r in tasks.get("pretrain", {}).values())
+    ncols = 3 if has_collapse else 2
+    fig, axes = plt.subplots(1, ncols, figsize=(6.5 * ncols, 4.5))
+    ax_l, ax_a = axes[0], axes[1]
     fig.suptitle(title)
 
     for key, label in (("loss", "total loss"), ("ssl_loss", "SSL loss"),
@@ -116,6 +131,25 @@ def plot_png(tasks, out_png, title):
             ax_a.plot(x, y, "--", label=f"val acc@1 [{t}]")
     ax_a.set_xlabel("epoch"), ax_a.set_ylabel("accuracy (%)"), ax_a.set_title("accuracies")
     ax_a.legend(fontsize=8), ax_a.grid(alpha=0.3)
+
+    if has_collapse:
+        # Two failure modes, two scales: std_ratio -> 0 is complete collapse, erank
+        # falling is dimensional collapse. Both are invisible in the loss panel.
+        ax_c = axes[2]
+        for key, label in (("std_ratio", "std ratio (1 = spread)"),
+                           ("erank_ratio", "effective rank / max")):
+            x, y = series("pretrain", key)
+            if x:
+                ax_c.plot(x, y, marker="o", markersize=3, label=label)
+        ax_c.set_ylim(0, 1.05)
+        ax_c.set_xlabel("epoch"), ax_c.set_ylabel("ratio"), ax_c.set_title("collapse")
+        x, y = series("pretrain", "erank")
+        if x:
+            ax_r = ax_c.twinx()
+            ax_r.plot(x, y, color="gray", ls=":", label="effective rank")
+            ax_r.set_ylabel("effective rank")
+            ax_r.legend(fontsize=8, loc="center right")
+        ax_c.legend(fontsize=8, loc="lower left"), ax_c.grid(alpha=0.3)
 
     fig.tight_layout()
     fig.savefig(out_png, dpi=130)

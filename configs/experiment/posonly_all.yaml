@@ -1,0 +1,22 @@
+# Positives-only + transformation prediction over ALL NINE factors.
+#
+# The target is AugSelf's (l2 on the normalized parameter difference, through the
+# tanh their released code applies) carried over our full factor set.
+#
+# On p_same: 0.0 -- every factor is drawn DIFFERENT between the two views, with the
+# perceptibility margin enforced. Here the auxiliary term is the only thing holding
+# the representation up, so it must never be handed a pair whose parameters happen
+# to coincide: those contribute a near-zero target and no signal. This is stricter
+# than AugSelf's independent sampling, which does occasionally draw near-identical
+# parameters, and stricter than relpred's p_same=0.5.
+#
+# aug_sharing stays true because it selects the RELATIONAL LOADER (the one that
+# emits the parameter target at all) -- with p_same at 0 nothing is actually shared.
+#
+# Run this with framework: posonly. Against any other framework it is just
+# relpred_regress with a different mask.
+rel_regress: true
+rel_lambda: 0.5
+aug_sharing: true
+p_same: 0.0
+regress_factors: [crop, rotation, hflip, brightness, contrast, saturation, hue, grayscale, blur]
