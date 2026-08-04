@@ -111,14 +111,23 @@ def test_default_head_stays_symmetric_for_relpred():
 
 def test_masked_l2_ignores_masked_entries():
     crit = RelRegressLoss()
-    pred = torch.zeros(4, REGRESS_TOTAL)
+    pred = torch.zeros(4, REGRESS_TOTAL)          # tanh(0) = 0
     target = torch.ones(4, REGRESS_TOTAL)
     mask = torch.ones(4, REGRESS_TOTAL)
     assert abs(crit(pred, target, mask).item() - 1.0) < 1e-6
     mask[:, 0] = 0.0                      # masking a wrong entry must lower nothing else
     assert abs(crit(pred, target, mask).item() - 1.0) < 1e-6
-    pred2 = target.clone()
-    assert crit(pred2, target, mask).item() == 0.0
+    # a perfect prediction is atanh(target), since the head output passes through tanh
+    perfect = torch.atanh(target.clamp(-0.999, 0.999))
+    assert crit(perfect, target, mask).item() < 1e-4
+
+
+def test_regression_target_is_bounded_by_tanh():
+    # matches AugSelf's released objective; without it the loss grows without limit
+    crit = RelRegressLoss()
+    target = torch.ones(4, REGRESS_TOTAL)
+    mask = torch.ones(4, REGRESS_TOTAL)
+    assert crit(torch.full((4, REGRESS_TOTAL), 1e6), target, mask).item() < 4.0
 
 
 def test_loss_is_differentiable_and_finite_with_full_mask_zero():
@@ -147,7 +156,7 @@ def test_only_the_target_differs_from_relpred():
                 "crop_scale", "color_strength", "blur_mode"):
         assert r[key] == g[key], f"{key} differs: relpred={r[key]} regress={g[key]}"
     assert g["rel_regress"] is True and not r.get("rel_regress", False)
-    assert g["grad_clip"] > 0, "an l2 target does not saturate; clipping is needed"
+    assert g.get("grad_clip", 0) == 0, "tanh bounds the output; no clipping needed"
     assert isinstance(build_transform(g), RelPairTransform)
     assert build_transform(g).regress is True
 

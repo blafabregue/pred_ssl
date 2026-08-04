@@ -196,9 +196,15 @@ def train_one_epoch(loader, model, rel_head, rel_criterion, optimizer, device, c
 
         if augself and rel_head is not None:
             # AugSelf baseline: regress omega1 - omega2 from the ordered [h1, h2].
+            # Their SSObjective trains on BOTH orderings, stacking (z1,z2) with
+            # (z2,z1) and the correspondingly negated targets, so we do the same.
             omega1 = labels.to(device, non_blocking=True)
             omega2 = mask.to(device, non_blocking=True)
-            aug_loss = rel_criterion(rel_head(out.h1, out.h2), omega1, omega2)
+            pred = torch.cat([rel_head(out.h1, out.h2),
+                              rel_head(out.h2, out.h1)], dim=0)
+            tgt1 = torch.cat([omega1, omega2], dim=0)
+            tgt2 = torch.cat([omega2, omega1], dim=0)
+            aug_loss = rel_criterion(pred, tgt1, tgt2)
             loss = loss + cfg["rel_lambda"] * aug_loss
             pred_loss_val = aug_loss.item()
 

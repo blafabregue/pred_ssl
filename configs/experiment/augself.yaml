@@ -11,16 +11,9 @@ augself: true
 rel_lambda: 0.5
 aug_sharing: false        # AugSelf does NOT share augmentation parameters across views
 
-# AugSelf's l2 regression head is numerically fragile at the learning rates used by
-# SimCLR/BYOL/VICReg (0.2-0.3). Its published evaluation uses MoCo v2 and SimSiam
-# (lr 0.03-0.05), where it is stable; at lr 0.3 it diverges to NaN within ~6
-# iterations, because an MSE target does not saturate -- a drifting output produces a
-# proportionally larger gradient, which makes it drift further. (Our relational head
-# uses BCE-with-logits, which saturates, and needs no such safeguard.)
-#
-# Gradient clipping stabilizes it without altering the objective. The threshold is
-# chosen to be non-binding in normal operation: healthy SimCLR training has a median
-# gradient norm of 1.9, so 10 leaves ordinary steps untouched while preventing the
-# explosive feedback. Verified: no clip -> NaN; clip 100 -> still diverging (loss
-# 1220); clip 10 -> stable (loss 2.83).
-grad_clip: 10.0
+# No gradient clipping is needed. An earlier version of this file enabled it after
+# observing divergence, and attributed that to MSE being non-saturating -- both the
+# fix and the explanation were wrong. Their released SSObjective computes
+# F.mse_loss(torch.tanh(p), d): the tanh bounds the prediction to the target's range,
+# so the objective IS saturating and is stable at these learning rates. The
+# divergence came from our own implementation omitting that tanh.

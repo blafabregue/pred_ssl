@@ -105,16 +105,30 @@ def test_head_has_one_mlp_per_group_with_three_layers():
 # Loss
 # ---------------------------------------------------------------------------
 
-def test_loss_is_mse_on_the_parameter_difference():
+def test_loss_applies_tanh_before_the_squared_error():
+    # AugSelf's released SSObjective computes F.mse_loss(torch.tanh(p), d). The tanh
+    # is load-bearing: it bounds the prediction to the target's range, which is what
+    # keeps the objective stable. Omitting it diverges within a few iterations.
     crit = AugSelfLoss()
     o1, o2 = torch.rand(8, AUGSELF_DIM), torch.rand(8, AUGSELF_DIM)
-    assert crit(o1 - o2, o1, o2).item() == 0.0                   # perfect prediction
+    target = o1 - o2
+    # a perfect prediction is atanh(target), not target itself
+    assert crit(torch.atanh(target.clamp(-0.999, 0.999)), o1, o2).item() < 1e-5
+    assert crit(target, o1, o2).item() > 0.0
+    # at the origin tanh is the identity, so the loss is the plain MSE there
     pred = torch.zeros(8, AUGSELF_DIM, requires_grad=True)
     loss = crit(pred, o1, o2)
-    expected = ((o1 - o2) ** 2).mean()
-    assert abs(loss.item() - expected.item()) < 1e-6
+    assert abs(loss.item() - (target ** 2).mean().item()) < 1e-6
     loss.backward()
     assert pred.grad is not None and torch.isfinite(pred.grad).all()
+
+
+def test_loss_is_bounded_for_arbitrarily_large_predictions():
+    # the property the tanh buys: a drifting output cannot blow the loss up
+    crit = AugSelfLoss()
+    o1, o2 = torch.rand(8, AUGSELF_DIM), torch.rand(8, AUGSELF_DIM)
+    huge = torch.full((8, AUGSELF_DIM), 1e6)
+    assert crit(huge, o1, o2).item() < 4.0        # (tanh in [-1,1], target in [-1,1])
 
 
 # ---------------------------------------------------------------------------

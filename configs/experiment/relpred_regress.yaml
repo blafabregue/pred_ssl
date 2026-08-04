@@ -16,9 +16,17 @@
 #     under view swap, so a symmetric head could not represent it and the ablation
 #     would fail for the wrong reason.
 #
-# grad_clip is enabled because an l2 target does not saturate; this is the same
-# instability that made AugSelf's head diverge at these learning rates.
+# The regression passes through tanh before the squared error, as AugSelf's released
+# code does. It bounds the output to the target's range and keeps the objective
+# stable, so no gradient clipping is required; an earlier version of this file
+# enabled clipping on the mistaken belief that a squared-error target cannot
+# saturate, which is true only of the unbounded variant AugSelf does not use.
+#
+# KNOWN LIMITATION of this ablation as it stands: rotation is regressed on a linear
+# index, whereas AugSelf treats it as a 4-way classification of (k1-k2) mod 4, which
+# respects its cyclic structure. Regressing it is therefore a weaker treatment than
+# the prior work actually uses, and the rotation component of this comparison should
+# not be read as evidence against regression. See the note in the paper.
 rel_regress: true
 rel_lambda: 0.5
 aug_sharing: true
-grad_clip: 10.0

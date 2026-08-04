@@ -128,12 +128,15 @@ class RelRegressLoss(nn.Module):
     normalized parameters rather than a per-factor same/different label. Averaging
     over unmasked entries only, so masked factors contribute nothing.
 
-    Unlike BCE, this objective does not saturate -- the property that made AugSelf's
-    head diverge at large learning rates -- so runs using it may need grad_clip.
+    The prediction passes through ``tanh`` before the squared error, as in AugSelf's
+    released SSObjective. This is not cosmetic: it bounds the output to the target's
+    range, which is what keeps a squared-error objective stable at these learning
+    rates. Comparing our target against an UNBOUNDED regression would not be an
+    ablation of the target function but of a known-unstable variant.
     """
 
     def forward(self, pred, target, mask):
-        se = (pred - target).pow(2) * mask
+        se = (torch.tanh(pred) - target).pow(2) * mask
         denom = mask.sum().clamp(min=1.0)
         return se.sum() / denom
 
@@ -169,20 +172,27 @@ class BarlowTwinsLoss(nn.Module):
 
 
 class AugSelfLoss(nn.Module):
-    """AugSelf auxiliary loss (Lee et al., 2021).
+    """AugSelf auxiliary loss (Lee et al., 2021), following their released code.
 
     Regresses the DIFFERENCE of the two views' augmentation parameters,
-    ``omega_1 - omega_2``, under an l2 loss, from the concatenated representations
-    of both views. Following the paper's default predicted set
-    A_AugSelf = {crop, color}, omega is the 8-d vector produced by
-    data.transforms.AugSelfTransform (4 crop + 4 color, each normalized to [0, 1]).
+    ``omega_1 - omega_2``, from the concatenated representations of both views.
+    Following the paper's default predicted set A_AugSelf = {crop, color}, omega is
+    the 8-d vector produced by data.transforms.AugSelfTransform (4 crop + 4 color,
+    each normalized to [0, 1], so the difference lies in [-1, 1]).
 
-    Note the target is antisymmetric under view swap, which is why AugSelf's head
-    takes the ordered concatenation ``[h1, h2]`` rather than a symmetric combination.
+    The ``tanh`` matters and is easy to miss: their SSObjective computes
+    ``F.mse_loss(torch.tanh(p), d)``, which BOUNDS the prediction to the target's
+    range. Without it the head's output can drift without limit and the squared
+    error grows with it, which diverges within a few iterations at SimCLR-scale
+    learning rates. It is a saturating objective, not a raw l2 one.
+
+    The target is antisymmetric under view swap, which is why the head takes the
+    ordered concatenation ``[h1, h2]``; their code additionally trains on both
+    orderings (see train.py).
     """
 
     def forward(self, pred, omega1, omega2):
-        return F.mse_loss(pred, omega1 - omega2)
+        return F.mse_loss(torch.tanh(pred), omega1 - omega2)
 
 
 class RelPairLoss(nn.Module):
